@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final, TypedDict
 
-DOMAIN = "xiaomi_ble"
+DOMAIN = "bm2_ble"
 
 
 CONF_DISCOVERED_EVENT_CLASSES: Final = "known_events"
