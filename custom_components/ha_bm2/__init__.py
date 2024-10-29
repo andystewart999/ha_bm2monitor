@@ -1,4 +1,4 @@
-"""The Xiaomi Bluetooth integration."""
+"""The BM2 Bluetooth integration."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from functools import partial
 import logging
 from typing import cast
 
-from xiaomi_ble import EncryptionScheme, SensorUpdate, XiaomiBluetoothDeviceData
+#from xiaomi_ble import EncryptionScheme, SensorUpdate, XiaomiBluetoothDeviceData
+#Consider how to manage the encryption - probably KD's encryption module
 
 from homeassistant.components.bluetooth import (
     DOMAIN as BLUETOOTH_DOMAIN,
@@ -20,6 +21,14 @@ from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceRegistry
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+# from .const import (
+#     CONF_DISCOVERED_EVENT_CLASSES,
+#     CONF_SLEEPY_DEVICE,
+#     DOMAIN,
+#     XIAOMI_BLE_EVENT,
+#     XiaomiBleEvent,
+# )
 
 from .const import (
     CONF_DISCOVERED_EVENT_CLASSES,
