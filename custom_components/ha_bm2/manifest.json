@@ -17,6 +17,14 @@
     {
       "connectable": false,
       "service_data_uuid": "0000fe95-0000-1000-8000-00805f9b34fb"
+    },
+    {
+      "connectable": false,
+      "local_name": "Battery Monitor"
+    },
+    {
+      "connectable": false,
+      "local_name": "Battery_Monitor"
     }
   ],
   "codeowners": ["@Jc2k", "@Ernst79"],
