@@ -4,12 +4,25 @@
   "bluetooth": [
     {
       "connectable": false,
-      "service_data_uuid": "0000181b-0000-1000-8000-00805"
+      "service_data_uuid": "0000181b-0000-1000-8000-00805f9b34fb"
+    },
+    {
+      "connectable": false,
+      "service_data_uuid": "0000181d-0000-1000-8000-00805f9b34fb"
+    },
+    {
+      "connectable": false,
+      "service_data_uuid": "0000fd50-0000-1000-8000-00805f9b34fb"
+    },
+    {
+      "connectable": false,
+      "service_data_uuid": "0000fe95-0000-1000-8000-00805f9b34fb"
     }
   ],
-  "codeowners": ["@andystewart999"],
+  "codeowners": ["@Jc2k", "@Ernst79"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
-  "documentation": "https://github.com/andystewart999/ha_bm2/",
-  "iot_class": "local_push"
+  "documentation": "https://www.home-assistant.io/integrations/xiaomi_ble",
+  "iot_class": "local_push",
+  "requirements": ["xiaomi-ble==0.33.0"]
 }
