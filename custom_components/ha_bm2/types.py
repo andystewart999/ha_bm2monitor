@@ -1,10 +1,10 @@
-"""Support for BM2 BLE."""
+"""Support for xiaomi ble."""
 
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 
 if TYPE_CHECKING:
-    from .coordinator import BME2ActiveBluetoothProcessorCoordinator
+    from .coordinator import XiaomiActiveBluetoothProcessorCoordinator
 
-type BME2BLEConfigEntry = ConfigEntry[BME2ActiveBluetoothProcessorCoordinator]
+type XiaomiBLEConfigEntry = ConfigEntry[XiaomiActiveBluetoothProcessorCoordinator]
