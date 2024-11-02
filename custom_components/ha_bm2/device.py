@@ -40,8 +40,8 @@ class VictronBluetoothDeviceData(BluetoothData):
 
     def _start_update(self, service_info: BluetoothServiceInfo) -> None:
         """Update from BLE advertisement data."""
-        _LOGGER.debug(
-            "Parsing Victron BLE advertisement data: %s", service_info.manufacturer_data
+        _LOGGER.error(
+            "Parsing BM2 BLE advertisement data: %s", service_info.manufacturer_data
         )
         manufacturer_data = service_info.manufacturer_data
         service_uuids = service_info.service_uuids
@@ -52,9 +52,12 @@ class VictronBluetoothDeviceData(BluetoothData):
 
         self.set_precision(2)
 
+        _LOGGER.error(
+            "About to process manufacturer_data.items"
+        )
         for mfr_id, mfr_data in manufacturer_data.items():
-            if mfr_id != 0x02E1 or not mfr_data.startswith(b"\x10"):
-                continue
+"""            if mfr_id != 0x02E1 or not mfr_data.startswith(b"\x10"): """
+"""                continue  """
             self._process_mfr_data(address, local_name, mfr_id, mfr_data, service_uuids)
 
     def _process_mfr_data(
@@ -68,10 +71,10 @@ class VictronBluetoothDeviceData(BluetoothData):
         """Parser for Victron sensors."""
         device_parser = detect_device_type(data)
         if not device_parser:
-            _LOGGER.error("Could not identify Victron device type")
+            _LOGGER.error("Could not identify BM2 device type")
             return
         parsed = device_parser(self.key).parse(data)
-        _LOGGER.debug(f"Handle Victron BLE advertisement data: {parsed._data}")
+        _LOGGER.error(f"Handle BM2 BLE advertisement data: {parsed._data}")
         self.set_device_type(parsed.get_model_name())
 
         if isinstance(parsed, DcEnergyMeterData):
