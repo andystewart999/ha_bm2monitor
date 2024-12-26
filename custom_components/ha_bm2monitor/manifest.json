@@ -1,6 +1,7 @@
 {
   "domain": "ha_bm2monitor",
   "name": "BM2 battery monitor",
+  "version": "0.5.0
   "codeowners": ["@andystewart999"],
   "bluetooth": [
     {
@@ -17,7 +18,6 @@
   "requirements": ["numpy"],
   "iot_class": "local_polling",
   "integration_type": "device",
-  "version": "1.0.0",
-  "documentation": "https://github.com/fuatakgun/generic_bt",
-  "issue_tracker": "https://github.com/fuatakgun/generic_bt/issues"
+  "documentation": "https://github.com/andystewart999/ha_bm2monitor",
+  "issue_tracker": "https://github.com/andystewart999/ha_bm2monitor/issues"
 }
