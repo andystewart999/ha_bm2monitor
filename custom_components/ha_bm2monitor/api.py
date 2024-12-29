@@ -24,7 +24,7 @@ from .const import (
 )
 
 from bleak import BleakClient
-from bleak.exc import BleakError
+from bleak.exc import BleakError, BleakCharacteristicNotFoundError
 import binascii
 from Crypto.Cipher import AES
 import asyncio
@@ -40,20 +40,20 @@ _LOGGER = logging.getLogger(__name__)
 class API:
     """Class for example API."""
 
-    def __init__(self, hass: HomeAssistant, address: str, ble_device, battery_type: str) -> None:
+    def __init__(self, hass: HomeAssistant, address: str, battery_type: str) -> None:
         """Initialise."""
-        self.address = address
         self.battery_type = battery_type
         self.hass = hass
         self.voltage = None
         self.percentage = None
         self.status = None
-        self.status_adjusted = None
         self.status_raw = None
+        self.status_adjusted = None
         self.gotdata = None
 
         """ Bluetooth stuff"""
-        self._ble_device = ble_device
+        self.address = address
+        #self._ble_device = address
         self._client: BleakClient | None = None
         self._client_stack = AsyncExitStack()
         self._lock = asyncio.Lock()
@@ -95,7 +95,6 @@ class API:
         """ Use self.battery_type to determine if we need to adjust the status based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
-        _LOGGER.error ("in api/adjust_status - battery_type = " + str(self.battery_type))
         if ( (self.battery_type == "Automatic (via BM2)")  or (raw_status == 4) ) :
             # Just return whatever the BM2 is telling us
             return raw_status
@@ -134,24 +133,10 @@ class API:
 
     async def get_devices(self) -> list[Device]:
         """ Connect to the BM2 device and retrieve the values """
-        _LOGGER.error("in apy/async_get_devices - about to run threadsafe read_gatt, _gotdata = " + str(self.gotdata))
         await self.read_gatt()
-        _LOGGER.error("in apy/async_get_devices - after threadsafe read_gatt, _gotdata = " + str(self.gotdata))
 
-        # # Nasty
-        # _LOGGER.error("in apy/get_devices - starting nasty tick check")
-        # ticks = 0
-        # while self._gotdata != True:
-        #     time.sleep(1.0)
-        #     ticks += 1
-        #     if ticks > GATT_TIMEOUT:
-        #         # We don't seem to have had any response
-        #         raise APIGATTError("Timeout reading BM2 GATT")
-
-        # _LOGGER.error("in apy/get_devices - finished nasty tick check")
         return [
             Device(
-                # device_id=device.get("id"),
                 device_unique_id=self.get_device_unique_id(device.get("type")),
                 device_type=device.get("type"),
                 device_class=device.get("class"),
@@ -162,38 +147,6 @@ class API:
             )
             for device in DEVICES
         ]
-
-    # def get_devices(self) -> list[Device]:
-    #     """ Connect to the BM2 device and retrieve the values """
-    #     _LOGGER.error("in apy/get_devices - about to run threadsafe read_gatt, _gotdata = " + str(self.gotdata))
-    #     asyncio.run_coroutine_threadsafe(self.read_gatt(), self.hass.loop)
-    #     _LOGGER.error("in apy/get_devices - after threadsafe read_gatt, _gotdata = " + str(self.gotdata))
-
-    #     # # Nasty
-    #     # _LOGGER.error("in apy/get_devices - starting nasty tick check")
-    #     # ticks = 0
-    #     # while self._gotdata != True:
-    #     #     time.sleep(1.0)
-    #     #     ticks += 1
-    #     #     if ticks > GATT_TIMEOUT:
-    #     #         # We don't seem to have had any response
-    #     #         raise APIGATTError("Timeout reading BM2 GATT")
-
-    #     # _LOGGER.error("in apy/get_devices - finished nasty tick check")
-    #     return [
-    #         Device(
-    #             # device_id=device.get("id"),
-    #             device_unique_id=self.get_device_unique_id(device.get("type")),
-    #             device_type=device.get("type"),
-    #             device_class=device.get("class"),
-    #             device_unit=device.get("unit"),
-    #             name=self.get_device_name(device.get("type")),
-    #             state=self.get_device_value(device.get("type")),
-    #             device_icon=self.get_device_icon(device.get("type"), self.get_device_value(device.get("type")))
-    #         )
-    #         for device in DEVICES
-    #     ]
-
 
     def get_device_unique_id(self, device_type: DeviceType) -> str:
         """Return a unique device id."""
@@ -216,7 +169,6 @@ class API:
     def get_device_value(self, device_type: DeviceType) -> int | str | float:
         """Get device value.  It's already been written"""
         if device_type == DeviceType.VOLTAGE_SENSOR:
-            _LOGGER.error ("In api/get_device_value - returning " + str(self.voltage) + " " + str(datetime.datetime.now().strftime("%H:%M:%S:%f")))
             return self.voltage
         if device_type == DeviceType.PERCENTAGE_SENSOR:
             return self.percentage
@@ -231,22 +183,30 @@ class API:
             return None
 
     async def read_gatt(self) -> bool:
+        """ This updates the voltage, status and percentage values
+        A variety of errors can occur, all error handling is managed by an upstream function """
         await self.get_client()
 
         """ This is the BM2 UUID that we need to read """
         uuid_str = "{0000fff4-0000-1000-8000-00805f9b34fb}"
         self.gotdata = False
+        self.unavailable = False
         ticks = 0
 
         """ We can't directly read a GATT, we have to register our interest in the UUID and get notified of the value
         But we're only interested in getting a single value so we'll de-register as soon as we get something """
+#        try:
         await self._client.start_notify(uuid_str, self.notification_handler)
         while self.gotdata != True:
             await asyncio.sleep(1.0)
             ticks += 1
             if ticks > GATT_TIMEOUT:
-                # We don't seem to have had any response
-                raise APIGATTError("Timeout reading BM2 GATT")
+                # We don't seem to have had any response - raise an error? Or leave the current values unchanged and fake it?
+                raise APIGATTError("Timeout reading BM2 data")
+
+                # # Or this?
+                # self.unavailable = True
+                # self.gotdata = True # a lie!
 
         await self._client.stop_notify(uuid_str)
         await self._client.disconnect()
@@ -258,15 +218,16 @@ class API:
         async with self._lock:
             if not self._client:
                 try:
-                    self._client = await self._client_stack.enter_async_context(BleakClient(self._ble_device, timeout=CONNECTION_TIMEOUT))
+                    self._client = await self._client_stack.enter_async_context(BleakClient(self.address, timeout=CONNECTION_TIMEOUT))
                 except asyncio.TimeoutError as exc:
-                    raise BleakError("Timeout on connect") from exc
+                    raise BleakError("Timeout attempting to connect") from exc
                 except BleakError as exc:
-                    raise BleakError("Error on connect") from exc
+                    raise BleakError("Error attempting to connect") from exc
             else:
                 pass
 
     def notification_handler(self, sender, data):
+        #_LOGGER.error("in api/notification_handler")
         """Simple bluetooth notification handler"""
 
         """ We need to decrypt the response """
@@ -275,24 +236,28 @@ class API:
         ble_msg = cipher.decrypt(data)
         raw = binascii.hexlify(ble_msg).decode()
 
+        # self.voltage = int(raw[2:5],16) / 100.0
+        # self.percentage = self.adjust_percentage(int(raw[6:8],16))
+        # self.status = BATTERY_STATUS.get(self.adjust_status(int(raw[5:6],16), self.percentage), "Unknown")
+        # #self.status_adjusted = self.adjust_status(int(raw[5:6],16), self.percentage)
+        # self.status_raw = int(raw[5:6],16)
+
         self.voltage = int(raw[2:5],16) / 100.0
-        self.percentage = self.adjust_percentage(int(raw[6:8],16))
-        self.status = BATTERY_STATUS.get(self.adjust_status(int(raw[5:6],16), self.percentage), "Unknown")
-        self.status_adjusted = self.adjust_status(int(raw[5:6],16), self.percentage)
+        self.percentage = int(raw[6:8],16)
+        self.status = BATTERY_STATUS.get(int(raw[5:6],16), "Unknown")
+        #self.status_adjusted = self.adjust_status(int(raw[5:6],16), self.percentage)
         self.status_raw = int(raw[5:6],16)
+
         self.gotdata = True
-        _LOGGER.error("in api/notification_handler: .status_raw = " + str(self.status_raw) + ", .status_adjusted = " + str(self.status_adjusted))
-        
+        _LOGGER.error("in api/notification_handler - .status_raw = " + str(self.status_raw))
+
     def update_from_advertisement(self, advertisement):
         """ We aren't listening for advertisements/broadcasts, we're doing direct connections """
         pass
 
 
-class APIAuthError(Exception):
-    """Exception class for auth error."""
-
-class APIConnectionError(Exception):
-    """Exception class for generic connection error."""
+#class APIConnectionError(Exception):
+#    """Exception class for generic connection error."""
 
 class APIGATTError(Exception):
     """Exception class for GATT connection error."""
