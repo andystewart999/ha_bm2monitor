@@ -6,16 +6,13 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-#    CONF_HOST,
-#    CONF_USERNAME,
-#    CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_ADDRESS
 )
 from homeassistant.core import DOMAIN, HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import API, APIAuthError
+from .api import API #, APIAuthError
 from .const import (
     DEFAULT_SCAN_INTERVAL,
     CONF_BATTERY_TYPE,
@@ -68,13 +65,12 @@ class ExampleCoordinator(DataUpdateCoordinator):
         )
 
         # Initialise your api here
-        self.api = API(hass = hass, address = self.address, ble_device = self.address, battery_type = self.battery_type)
+        self.api = API(hass = hass, address = self.address, battery_type = self.battery_type)
 
     async def _async_setup(self):
         """ This method will be called automatically during
         coordinator.async_config_entry_first_refresh """
         devices = await self.api.get_devices()
-        _LOGGER.error("in coordindator/_async_setup - devices = " + str(devices))
 
     async def async_update_data(self):
         """Fetch data from API endpoint.
@@ -83,9 +79,9 @@ class ExampleCoordinator(DataUpdateCoordinator):
         """
         try:
             devices = await self.api.get_devices()
-        except APIAuthError as err:
-            _LOGGER.error(err)
-            raise UpdateFailed(err) from err
+        # except APIAuthError as err:
+        #     _LOGGER.error(err)
+        #     raise UpdateFailed(err) from err
         except Exception as err:
             # This will show entities as unavailable by raising UpdateFailed exception
             raise UpdateFailed(f"Error communicating with API: {err}") from err
