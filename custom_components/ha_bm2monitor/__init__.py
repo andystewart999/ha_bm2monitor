@@ -17,7 +17,7 @@ from .const import DOMAIN, GATT_TIMEOUT, CONNECTION_TIMEOUT
 from .coordinator import ExampleCoordinator
 import asyncio
 
-_LOGGER = logging.getLogger(__name__)
+#_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -42,23 +42,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     # Perform an initial data load from api.
     # async_config_entry_first_refresh() is special in that it does not log errors if it fails
     await coordinator.async_config_entry_first_refresh()
-    #await coordinator.async_refresh()
 
-    # Test to see if api initialised correctly, else raise ConfigNotReady to make HA retry setup
-    # TODO: Change this to match how your api will know if connected or successful update
-
-    # There must be a better way than this...
-    _LOGGER.error("In init.py - starting nasty tick/sleep phase")
-    ticks = 0
-    while coordinator.api.gotdata != True:
-        await asyncio.sleep(1.0)
-        ticks += 1
-        if ticks > (CONNECTION_TIMEOUT + GATT_TIMEOUT):
-            # We don't seem to have had any response
-            raise ConfigEntryNotReady
-
-    _LOGGER.error("In init.py - we've got past the tick phase")
-    _LOGGER.error("In init.py - coordinator.api.voltage = " + str(coordinator.api.voltage))
+    if coordinator.api.gotdata != True:
+        raise ConfigEntryNotReady
 
     # Initialise a listener for config flow options changes.
     # See config_flow for defining an options setting that shows up as configure on the integration.
