@@ -8,7 +8,7 @@
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
-      "invalid_gatt": "Invalid GATT",
+      "invalid_gatt": "Unable to read BM2 data - the selected device doesn't appear to be a BM2 battery monitor",
       "unknown": "Unexpected error"
     },
     "step": {
