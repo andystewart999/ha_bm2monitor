@@ -27,7 +27,7 @@ from .const import (
 from .coordinator import ExampleCoordinator
 from bluetooth_data_tools import human_readable_name
 
-_LOGGER = logging.getLogger(__name__)
+#_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -40,21 +40,14 @@ async def async_setup_entry(
         config_entry.entry_id
     ].coordinator
 
-    _LOGGER.error("in sensor/async_setup_entry - coordinator.address = " + coordinator.address + ", coordinator.data = " + str(coordinator.data))
     # Enumerate all the sensors in your data value from your DataUpdateCoordinator and add an instance of your sensor class
     # to a list for each one.
-    # This maybe different in your specific case, depending on how your data is structured
-    for device in coordinator.data.devices:
-        _LOGGER.error("in sensor.async_setup_entry/for device loop - device.device_unique_id = " + str(device.device_unique_id))
-        
     sensors = [
         ExampleSensor(coordinator, device)
         for device in coordinator.data.devices
     ]
 
     # Create the sensors.
-    _LOGGER.error ("in sensor/async_setup_entry - sensors = " + str(sensors))
-    #await async_add_entities(devices)
     async_add_entities(sensors, update_before_add = True)
     
 
@@ -75,9 +68,6 @@ class ExampleSensor(CoordinatorEntity, SensorEntity):
         self.device = self.coordinator.get_device_by_type(
             self.device.device_type)
         
-        if self.device.device_type == DeviceType.VOLTAGE_SENSOR:
-            _LOGGER.error("in sensor/_handle_coordinator_update:  .voltage = " + str(self.device.state))
-
         self.async_write_ha_state()
 
     @property
@@ -112,31 +102,15 @@ class ExampleSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | float | str:
-        _LOGGER.error ("In sensor/native_value - " + self.device.name + ", " + str(self.device.state))
         """Return the state of the entity."""
         # Using native value and native unit of measurement, allows you to change units
         # in Lovelace and HA will automatically calculate the correct value.
-        # if not (self.device.state is None):
-        #     if self.device.device_type == DeviceType.VOLTAGE_SENSOR:
-        #         return float(self.device.state) / 100
-        #     else:
-        #         return self.device.state
         return self.device.state
-
-#    def update(self) -> None:
-#        _LOGGER.error("In sensor/update")
-#        self._attr_native_value = self.device.state
 
     @property
     def native_unit_of_measurement(self) -> UnitOfElectricPotential | None:
         """Return unit of temperature."""
         return self.device.device_unit
-
-    # @property
-    # def state_class(self) -> str | None:
-    #     """Return state class."""
-    #     # https://developers.home-assistant.io/docs/core/entity/sensor/#available-state-classes
-    #     return SensorStateClass.MEASUREMENT
 
     @property
     def unique_id(self) -> str:
