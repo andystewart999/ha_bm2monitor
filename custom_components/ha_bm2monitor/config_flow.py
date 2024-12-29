@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from bleak.exc import BleakError, BleakCharacteristicNotFoundError
+
 from bluetooth_data_tools import human_readable_name, short_address
 import voluptuous as vol
 
@@ -28,7 +30,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .api import API, APIAuthError, APIConnectionError
+from .api import API #, APIConnectionError, APIAuthError 
 from .const import (
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
@@ -53,22 +55,15 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     #     your_validate_func, data[CONF_USERNAME], data[CONF_PASSWORD]
     # )
 
-    try:
-        api = API(hass, data[CONF_ADDRESS], data[CONF_ADDRESS], DEFAULT_BATTERY_TYPE)
-        await api.read_gatt()  #Remarked out while the API/INIT is calling get_sensors
-        # If you cannot connect, raise CannotConnect
-        # If the authentication is wrong, raise InvalidAuth
+    # Error handling is managed via async_step_user
+    api = API(hass, data[CONF_ADDRESS], DEFAULT_BATTERY_TYPE)
+    await api.read_gatt()  
+
         
-        # Check _gotdata
-        _LOGGER.error ("In config_flow/validate_input - api.gotdata = " + str(api.gotdata))
-        if not api.gotdata:
-            raise CannotConnect from err
-    except APIAuthError as err:
-        raise InvalidAuth from err
-    except APIConnectionError as err:
-        raise CannotConnect from err
-    except InvalidGATT:
-        raise InvalidGATT from err
+    # Check _gotdata
+    #_LOGGER.error ("In config_flow/validate_input - api.gotdata = " + str(api.gotdata))
+    if not api.gotdata:
+        return None
 
     return {
         "title": f"BM2 battery monitor ({short_address(data[CONF_ADDRESS])})",
@@ -96,12 +91,11 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfoBleak) -> FlowResult:
          """ Handle the bluetooth discovery step - the discovery filter should only pick up BM2 battery monitors """
-
-         _LOGGER.error("New discovery info: %s", discovery_info)
-         _LOGGER.error("New discovery info: mfr_id = %s", discovery_info.manufacturer_id)
-         _LOGGER.error("New discovery info: service_uuid = %s", discovery_info.service_uuids)
-         _LOGGER.error("New discovery info: mfr_data = %s", discovery_info.manufacturer_data)
-         _LOGGER.error("New discovery info: mfr_data.type = %s", type(discovery_info.manufacturer_data))
+        #  _LOGGER.error("New discovery info: %s", discovery_info)
+        #  _LOGGER.error("New discovery info: mfr_id = %s", discovery_info.manufacturer_id)
+        #  _LOGGER.error("New discovery info: service_uuid = %s", discovery_info.service_uuids)
+        #  _LOGGER.error("New discovery info: mfr_data = %s", discovery_info.manufacturer_data)
+        #  _LOGGER.error("New discovery info: mfr_data.type = %s", type(discovery_info.manufacturer_data))
 
          await self.async_set_unique_id(discovery_info.address)
          self._abort_if_unique_id_configured()
@@ -126,13 +120,22 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
                 # The errors["base"] values match the values in your strings.json and translation files.
                 info = await validate_input(self.hass, user_input)
             except CannotConnect:
+                _LOGGER.error("In config_flow/async_step_user/CannotConnect")
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
+                _LOGGER.error("In config_flow/async_step_user/InvalidAuth")
                 errors["base"] = "invalid_auth"
             except InvalidGATT:
+                _LOGGER.error("In config_flow/async_step_user/InvalidGATT")
                 errors["base"] = "invalid_gatt"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except BleakCharacteristicNotFoundError as exc:
+                _LOGGER.error("In config_flow/async_step_user/BleakCharacteristicNotFoundError")
+                errors["base"] = "invalid_gatt"
+            except BleakError as exc:
+                _LOGGER.error("In config_flow/async_step_user/BleakError - exc = " + str(exc))
+                errors["base"] = "generic_bleak"
+            except Exception as err:  # pylint: disable=broad-except
+                _LOGGER.exception("In config_flow/async_step_user/Exception - " + str(err))
                 errors["base"] = "unknown"
 
             if "base" not in errors:
@@ -151,12 +154,20 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
         else:
             current_addresses = self._async_current_ids()
             for discovery in async_discovered_service_info(self.hass):
+                # if (
+                #     discovery.address in current_addresses
+                #     or discovery.address in self._discovered_devices
+                # ):
                 if (
                     discovery.address in current_addresses
                     or discovery.address in self._discovered_devices
                 ):
                     continue
-                self._discovered_devices[discovery.address] = discovery
+
+                # Filter a bit to only show connectable devices
+                if discovery.connectable == True:
+                    #_LOGGER.error("in config_flow/async_step_user - discovery.address/connectable = " + str(discovery.address) + "|" + str(discovery.connectable))
+                    self._discovered_devices[discovery.address] = discovery
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
