@@ -1,7 +1,7 @@
 {
   "domain": "ha_bm2monitor",
   "name": "BM2 battery monitor",
-  "version": "0.5.0
+  "version": "0.6.0",
   "codeowners": ["@andystewart999"],
   "bluetooth": [
     {
