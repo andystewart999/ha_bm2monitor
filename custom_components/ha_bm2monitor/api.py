@@ -40,9 +40,10 @@ _LOGGER = logging.getLogger(__name__)
 class API:
     """Class for example API."""
 
-    def __init__(self, hass: HomeAssistant, address: str, battery_type: str) -> None:
+    def __init__(self, hass: HomeAssistant, address: str, battery_type: str, persistent_connection: bool) -> None:
         """Initialise."""
         self.battery_type = battery_type
+        self.persistent_connection = persistent_connection
         self.hass = hass
         self.voltage = None
         self.percentage = None
@@ -63,6 +64,10 @@ class API:
         """Return the name of the controller."""
         return short_address(self.address)
 
+    @property
+    def connected(self) -> bool:
+        return not self._client is None
+
     def adjust_percentage(self, raw_percentage: int) -> int:
         """ Use self.battery_type to determine if we need to adjust the percentage based on voltage
             BM2's default percentage and status values are extremely optimistic! """
@@ -70,6 +75,10 @@ class API:
         np_percent = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
         match self.battery_type:
+            
+            case "Automatic (via BM2)":
+                return int(raw_percentage)
+                
             case "AGM":
                 np_voltage = [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8, 12.85]
                 
@@ -91,11 +100,15 @@ class API:
         
         return int(np.interp(self.voltage, np_voltage, np_percent))
 
-    def adjust_status(self, raw_status: int, adjusted_percentage: int) -> int:
+    def adjust_status(self, raw_status: int) -> int:
         """ Use self.battery_type to determine if we need to adjust the status based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
-        if ( (self.battery_type == "Automatic (via BM2)")  or (raw_status == 4) ) :
+        if self.battery_type == "Automatic (via BM2)" :
+            # Just return whatever the BM2 is telling us
+            return raw_status
+
+        if raw_status == 4 :
             # Just return whatever the BM2 is telling us
             return raw_status
 
@@ -124,9 +137,9 @@ class API:
                 low_percentage = 60
                 critical_percentage = 50
 
-        if adjusted_percentage <= critical_percentage:
+        if self.percentage <= critical_percentage:
             return 8    # Critical
-        elif adjusted_percentage <= low_percentage:
+        elif self.percentage <= low_percentage:
             return 1    # Low
         else:
             return 2    # Normal
@@ -185,8 +198,16 @@ class API:
     async def read_gatt(self) -> bool:
         """ This updates the voltage, status and percentage values
         A variety of errors can occur, all error handling is managed by an upstream function """
-        await self.get_client()
-
+        if not self._client:
+            _LOGGER.debug("Connecting BLE client")
+            try:
+                await self.get_client()
+            finally:
+                #Error handling is elsewhere
+                pass
+        else:
+            _LOGGER.debug("Using existing BLE client")
+            
         """ This is the BM2 UUID that we need to read """
         uuid_str = "{0000fff4-0000-1000-8000-00805f9b34fb}"
         self.gotdata = False
@@ -209,8 +230,11 @@ class API:
                 # self.gotdata = True # a lie!
 
         await self._client.stop_notify(uuid_str)
-        await self._client.disconnect()
-        self._client = None
+
+        if not self.persistent_connection:
+            _LOGGER.debug("Closing BLE client")
+            await self._client.disconnect()
+            self._client = None
 
         return self.gotdata
 
@@ -227,7 +251,6 @@ class API:
                 pass
 
     def notification_handler(self, sender, data):
-        #_LOGGER.error("in api/notification_handler")
         """Simple bluetooth notification handler"""
 
         """ We need to decrypt the response """
@@ -236,20 +259,17 @@ class API:
         ble_msg = cipher.decrypt(data)
         raw = binascii.hexlify(ble_msg).decode()
 
+        self.voltage = int(raw[2:5],16) / 100.0
+        self.percentage = self.adjust_percentage(int(raw[6:8],16))
+        self.status_raw = int(raw[5:6],16)
+        self.status = BATTERY_STATUS.get(self.adjust_status(self.status_raw), "Unknown")
+
         # self.voltage = int(raw[2:5],16) / 100.0
-        # self.percentage = self.adjust_percentage(int(raw[6:8],16))
-        # self.status = BATTERY_STATUS.get(self.adjust_status(int(raw[5:6],16), self.percentage), "Unknown")
-        # #self.status_adjusted = self.adjust_status(int(raw[5:6],16), self.percentage)
+        # self.percentage = int(raw[6:8],16)
+        # self.status = BATTERY_STATUS.get(int(raw[5:6],16), "Unknown")
         # self.status_raw = int(raw[5:6],16)
 
-        self.voltage = int(raw[2:5],16) / 100.0
-        self.percentage = int(raw[6:8],16)
-        self.status = BATTERY_STATUS.get(int(raw[5:6],16), "Unknown")
-        #self.status_adjusted = self.adjust_status(int(raw[5:6],16), self.percentage)
-        self.status_raw = int(raw[5:6],16)
-
         self.gotdata = True
-        _LOGGER.error("in api/notification_handler - .status_raw = " + str(self.status_raw))
 
     def update_from_advertisement(self, advertisement):
         """ We aren't listening for advertisements/broadcasts, we're doing direct connections """
