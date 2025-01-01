@@ -9,14 +9,17 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
     CONF_ADDRESS
 )
-from homeassistant.core import DOMAIN, HomeAssistant
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import API #, APIAuthError
 from .const import (
+    DOMAIN,
     DEFAULT_SCAN_INTERVAL,
     CONF_BATTERY_TYPE,
     DEFAULT_BATTERY_TYPE,
+    CONF_PERSISTENT_CONNECTION,
+    DEFAULT_PERSISTENT_CONNECTION,
     Device,
     DeviceType
 )
@@ -48,8 +51,12 @@ class ExampleCoordinator(DataUpdateCoordinator):
         self.poll_interval = config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
+
         self.battery_type = config_entry.options.get(
             CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE
+        )
+        self.persistent_connection = config_entry.options.get(
+            CONF_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION
         )
 
         # Initialise DataUpdateCoordinator
@@ -60,23 +67,40 @@ class ExampleCoordinator(DataUpdateCoordinator):
             # Method to call on every update interval.
             update_method=self.async_update_data,
             # Polling interval. Will only be polled if there are subscribers.
-            # Using config option here but you can just use a value.
             update_interval=timedelta(seconds=self.poll_interval),
         )
 
         # Initialise your api here
-        self.api = API(hass = hass, address = self.address, battery_type = self.battery_type)
+        self.api = API(hass = hass, address = self.address, battery_type = self.battery_type, persistent_connection = self.persistent_connection)
 
     async def _async_setup(self):
         """ This method will be called automatically during
         coordinator.async_config_entry_first_refresh """
-        devices = await self.api.get_devices()
+        # try:
+        #     devices = await self.api.get_devices()
 
+        # except Exception as err:
+        #     # This will show entities as unavailable by raising UpdateFailed exception
+        #     _LOGGER.error("in coordinatory/async_update_data - about to raise UpdateFailed")
+        #     raise UpdateFailed(f"Error communicating with API: {err}") from err
+        
+        pass
+    
     async def async_update_data(self):
         """Fetch data from API endpoint.
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
+
+        # # Check to see if we need to change the update interval
+        # temp_poll_interval = config_entry.options.get(
+        #     CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        # )
+        # if temp_poll_interval != self.update_interval:
+        #     _LOGGER.error("in coordinator/async_update_data - changing update_interval to " + str(temp_poll_interval))
+        #     self.update_interval = temp_poll_interval
+        
+        
         try:
             devices = await self.api.get_devices()
         # except APIAuthError as err:
@@ -84,6 +108,7 @@ class ExampleCoordinator(DataUpdateCoordinator):
         #     raise UpdateFailed(err) from err
         except Exception as err:
             # This will show entities as unavailable by raising UpdateFailed exception
+            _LOGGER.error("in coordinatory/async_update_data - about to raise UpdateFailed")
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
