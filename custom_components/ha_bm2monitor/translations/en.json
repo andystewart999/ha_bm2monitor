@@ -1,31 +1,19 @@
 {
   "config": {
-    "title": "Integration 101 Template Integration",
+    "title": "BM2 battery monitor",
     "abort": {
       "already_configured": "Device is already configured",
       "reconfigure_successful": "Reconfiguration successful"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
-      "invalid_auth": "Invalid authentication",
+      "cannot_connect": "Failed to make Bluetooth connection",
       "invalid_gatt": "Unable to read BM2 data - the selected device doesn't appear to be a BM2 battery monitor",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
         "data": {
-          "host": "Host",
-          "password": "Password",
-          "username": "Username",
-          "address": "Discovered Bluetooth devices",
-          "battery_type": "Battery type"
-        }
-      },
-      "reconfigure": {
-        "data": {
-          "host": "Host",
-          "password": "Password",
-          "username": "Username"
+          "address": "Discovered Bluetooth devices"
         }
       }
     }
@@ -35,10 +23,11 @@
       "init": {
         "data": {
           "battery_type": "Battery type",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Scan interval (seconds)",
+          "persistent_connection": "Maintain a persistent Bluetooth connection between polls, rather than a connection being made and broken at each poll.  Note that your Bluetooth adapter may have a limit to the number of concurrent connections it can support."
         },
-        "description": "Amend your options.",
-        "title": "Example Integration Options"
+        "title": "Options",
+        "description": ""
       }
     }
   }
