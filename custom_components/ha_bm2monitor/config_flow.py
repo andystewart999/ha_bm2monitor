@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlow,
+    OptionsFlow
 )
 from homeassistant.const import (
 #    CONF_HOST,
@@ -37,7 +37,9 @@ from .const import (
     MIN_SCAN_INTERVAL,
     BATTERY_TYPES,
     CONF_BATTERY_TYPE,
-    DEFAULT_BATTERY_TYPE
+    DEFAULT_BATTERY_TYPE,
+    CONF_PERSISTENT_CONNECTION,
+    DEFAULT_PERSISTENT_CONNECTION
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,12 +58,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # )
 
     # Error handling is managed via async_step_user
-    api = API(hass, data[CONF_ADDRESS], DEFAULT_BATTERY_TYPE)
+    api = API(hass, data[CONF_ADDRESS], DEFAULT_BATTERY_TYPE, DEFAULT_PERSISTENT_CONNECTION)
     await api.read_gatt()  
 
         
     # Check _gotdata
-    #_LOGGER.error ("In config_flow/validate_input - api.gotdata = " + str(api.gotdata))
     if not api.gotdata:
         return None
 
@@ -78,11 +79,9 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: ConfigEntry) -> ExampleOptionsFlowHandler:
         """Get the options flow for this handler."""
-        # Remove this method and the ExampleOptionsFlowHandler class
-        # if you do not want any options for your integration.
-        return ExampleOptionsFlowHandler(config_entry)
+        return ExampleOptionsFlowHandler()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -122,9 +121,9 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 _LOGGER.error("In config_flow/async_step_user/CannotConnect")
                 errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                _LOGGER.error("In config_flow/async_step_user/InvalidAuth")
-                errors["base"] = "invalid_auth"
+            # except InvalidAuth:
+            #     _LOGGER.error("In config_flow/async_step_user/InvalidAuth")
+            #     errors["base"] = "invalid_auth"
             except InvalidGATT:
                 _LOGGER.error("In config_flow/async_step_user/InvalidGATT")
                 errors["base"] = "invalid_gatt"
@@ -166,7 +165,6 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 # Filter a bit to only show connectable devices
                 if discovery.connectable == True:
-                    #_LOGGER.error("in config_flow/async_step_user - discovery.address/connectable = " + str(discovery.address) + "|" + str(discovery.connectable))
                     self._discovered_devices[discovery.address] = discovery
 
         if not self._discovered_devices:
@@ -197,31 +195,33 @@ class ExampleConfigFlow(ConfigFlow, domain=DOMAIN):
 class ExampleOptionsFlowHandler(OptionsFlow):
     """Handles the options flow."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self.options = dict(config_entry.options)
+        #self.config_entry = config_entry
+        #self.options = dict(config_entry.options)
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(self, user_input=None) -> FlowResult:
         """Handle options flow."""
         if user_input is not None:
-            options = self.config_entry.options | user_input
+            #options = self.config_entry.options | user_input
 
-            return self.async_create_entry(title="", data=options)
+            return self.async_create_entry(title="", data=user_input)
 
-        # It is recommended to prepopulate options fields with default values if available.
-        # These will be the same default values you use on your coordinator for setting variable values
-        # if the option has not been set.
+        # Populate the schema with default values or whatever's been set already
         data_schema = vol.Schema(
             {
                 vol.Required(
                     CONF_SCAN_INTERVAL,
-                    default=self.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    default=self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): (vol.All(vol.Coerce(int), vol.Clamp(min=MIN_SCAN_INTERVAL))),
                 vol.Required(
                     CONF_BATTERY_TYPE,
-                    default=self.options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE),
+                    default=self.config_entry.options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE),
                 ): vol.In(BATTERY_TYPES),
+                vol.Required(
+                    CONF_PERSISTENT_CONNECTION,
+                    default=self.config_entry.options.get(CONF_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION),
+                ): bool,
             }
         )
 
@@ -231,10 +231,8 @@ class ExampleOptionsFlowHandler(OptionsFlow):
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
 
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
-
+# class InvalidAuth(HomeAssistantError):
+#     """Error to indicate there is invalid auth."""
 
 class InvalidGATT(HomeAssistantError):
-    """Error to indicate there is an issue reading the BM2 GATT."""
+    """Error to indicate there is an issue reading the BM2 characteristic."""
