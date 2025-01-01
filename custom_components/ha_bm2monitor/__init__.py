@@ -72,6 +72,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 async def _async_update_listener(hass: HomeAssistant, config_entry):
     """Handle config options update."""
 
+    # We may not need to call this, as options changes are cosmetic
+    # Test changing self.update_interval from within coordinator/async_update_data
+
     # Reload the integration when the options change.
     await hass.config_entries.async_reload(config_entry.entry_id)
 
