@@ -11,8 +11,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-from .api import API #, APIAuthError
+from .api import (
+    API,
+APIAuthError
+)
 from .const import (
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
@@ -27,7 +29,6 @@ import asyncio
 import datetime
 
 _LOGGER = logging.getLogger(__name__)
-
 
 @dataclass
 class ExampleAPIData:
