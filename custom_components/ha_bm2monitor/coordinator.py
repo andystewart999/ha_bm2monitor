@@ -103,17 +103,20 @@ class ExampleCoordinator(DataUpdateCoordinator):
         
         
         try:
+            devices = None
             devices = await self.api.get_devices()
         # except APIAuthError as err:
         #     _LOGGER.error(err)
         #     raise UpdateFailed(err) from err
         except Exception as err:
             # This will show entities as unavailable by raising UpdateFailed exception
-            _LOGGER.error("in coordinatory/async_update_data - about to raise UpdateFailed")
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+            _LOGGER.error("in coordinatory/async_update_data - about to raise UpdateFailed with " + str(err))
+            # raise UpdateFailed(f"Error communicating with API: {err}") from err
+            pass
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
-        return ExampleAPIData(self.api.controller_name, devices)
+        else:
+            return ExampleAPIData(self.api.controller_name, devices)
 
     def get_device_by_type(
         self, device_type: DeviceType) -> Device | None:
