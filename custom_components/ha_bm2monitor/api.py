@@ -148,18 +148,20 @@ class API:
         """ Connect to the BM2 device and retrieve the values """
         await self.read_gatt()
 
-        return [
-            Device(
-                device_unique_id=self.get_device_unique_id(device.get("type")),
-                device_type=device.get("type"),
-                device_class=device.get("class"),
-                device_unit=device.get("unit"),
-                name=self.get_device_name(device.get("type")),
-                state=self.get_device_value(device.get("type")),
-                device_icon=self.get_device_icon(device.get("type"), self.get_device_value(device.get("type")))
-            )
-            for device in DEVICES
-        ]
+        sensors = []
+        for device in DEVICES:
+            device_type = device.get("type")
+            device_unique_id = self.get_device_unique_id(device_type)
+            device_class = device.get("class")
+            device_unit = device.get("unit")
+            name = self.get_device_name(device_type)
+            state = self.get_device_value(device_type)
+            device_icon = self.get_device_icon(device_type, state)
+            
+            tmpSensor = Device(device_unique_id, device_type, device_class, device_unit, device_icon, name, state)
+            sensors.append (tmpSensor)
+
+        return sensors
 
     def get_device_unique_id(self, device_type: DeviceType) -> str:
         """Return a unique device id."""
@@ -200,11 +202,8 @@ class API:
         A variety of errors can occur, all error handling is managed by an upstream function """
         if not self._client:
             _LOGGER.debug("Connecting BLE client")
-            try:
-                await self.get_client()
-            finally:
-                #Error handling is elsewhere
-                pass
+            #Error handling is elsewhere
+            await self.get_client()
         else:
             _LOGGER.debug("Using existing BLE client")
             
