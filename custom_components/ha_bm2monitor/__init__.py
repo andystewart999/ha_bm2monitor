@@ -8,7 +8,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -78,7 +78,6 @@ async def _async_update_listener(hass: HomeAssistant, config_entry):
     # Reload the integration when the options change.
     await hass.config_entries.async_reload(config_entry.entry_id)
 
-
 async def async_remove_config_entry_device(
     hass: HomeAssistant, config_entry: ConfigEntry, device_entry: DeviceEntry
 ) -> bool:
@@ -87,7 +86,6 @@ async def async_remove_config_entry_device(
     # Remove this function if you do not want that option.
     # You may need to do some checks here before allowing devices to be removed.
     return True
-
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
