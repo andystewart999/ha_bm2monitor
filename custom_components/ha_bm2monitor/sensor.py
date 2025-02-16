@@ -49,7 +49,6 @@ async def async_setup_entry(
 
     # Create the sensors.
     async_add_entities(sensors, update_before_add = True)
-    
 
 class ExampleSensor(CoordinatorEntity, SensorEntity):
     """Implementation of a sensor."""
@@ -67,8 +66,9 @@ class ExampleSensor(CoordinatorEntity, SensorEntity):
         # This method is called by your DataUpdateCoordinator when a successful update runs.
         self.device = self.coordinator.get_device_by_type(
             self.device.device_type)
-        
-        self.async_write_ha_state()
+            
+        if not self.device is None:
+            self.async_write_ha_state()
 
     @property
     def device_class(self) -> SensorDeviceClass | None:
@@ -131,3 +131,20 @@ class ExampleSensor(CoordinatorEntity, SensorEntity):
     def icon(self) -> str:
         """Return icon, only for the status entity."""
         return self.device.device_icon
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available.
+
+        The sensor is only created when the device is seen.
+
+        Since these are sleepy devices which stop broadcasting
+        when not in use, we can't rely on the last update time
+        so once we have seen the device we always return True.
+        """
+        return True
+
+    # @property
+    # def assumed_state(self) -> bool:
+    #     """Return True if the device is no longer broadcasting."""
+    #     return not self.processor.available
