@@ -11,10 +11,8 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from .api import (
-    API,
-APIAuthError
-)
+
+from .api import API #, APIAuthError
 from .const import (
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
@@ -29,6 +27,7 @@ import asyncio
 import datetime
 
 _LOGGER = logging.getLogger(__name__)
+
 
 @dataclass
 class ExampleAPIData:
@@ -110,9 +109,7 @@ class ExampleCoordinator(DataUpdateCoordinator):
         #     raise UpdateFailed(err) from err
         except Exception as err:
             # This will show entities as unavailable by raising UpdateFailed exception
-            _LOGGER.error("in coordinatory/async_update_data - about to raise UpdateFailed with " + str(err))
-            # raise UpdateFailed(f"Error communicating with API: {err}") from err
-            pass
+            raise UpdateFailed(f"Error communicating with API: {err}") from err
 
         # What is returned here is stored in self.data by the DataUpdateCoordinator
         else:
@@ -122,11 +119,14 @@ class ExampleCoordinator(DataUpdateCoordinator):
         self, device_type: DeviceType) -> Device | None:
         """Return device by device type."""
         # Called by the sensors to get their updated data from self.data
-        try:
-            return [
-                device
-                for device in self.data.devices
-                if device.device_type == device_type
-            ][0]
-        except IndexError:
+        if not self.data.devices is None:
+            try:
+                return [
+                    device
+                    for device in self.data.devices
+                    if device.device_type == device_type
+                ][0]
+            except IndexError:
+                return None
+        else:
             return None
