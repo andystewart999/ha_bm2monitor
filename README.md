@@ -5,5 +5,5 @@ It discovers BM2 battery monitor devices and creates sensors based on battery vo
 
 There is an option to explicitily define the battery chemistry type which affects the percentage and status calculations.  A number of sources have been used in the volts-to-percentage mapping function, which uses Numpy.
   
-With thanks to @KrystianD for his reverse-engineering of the BM2 data and app, @fuatakgun for 'Generic Bluetooth' and @msp1974 for 'HAIntegrationExamples'
+With thanks to @KrystianD for his reverse-engineering of the BM2 data and app, and @bdraco and @Lash-L for the Oral-B integration that I, ah, leveraged.
 
