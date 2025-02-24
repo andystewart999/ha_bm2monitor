@@ -1,47 +1,26 @@
-"""Constants for the Integration 101 Template integration."""
-
-from dataclasses import dataclass
-from enum import StrEnum
-from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.const import (
-    PERCENTAGE,
-    UnitOfElectricPotential,
-)
+"""Constants for the BM2 battery monitor integration."""
 
 DOMAIN = "ha_bm2monitor"
 
 CONF_BATTERY_TYPE = "battery_type"
 DEFAULT_BATTERY_TYPE = "Automatic (via BM2)"
-CONF_PERSISTENT_CONNECTION = "persistent_connection"
-DEFAULT_PERSISTENT_CONNECTION = False
 DEFAULT_SCAN_INTERVAL = 60
 MIN_SCAN_INTERVAL = 30
-CONNECTION_TIMEOUT = 45
-GATT_TIMEOUT = 45
+CONF_SCAN_MODE = "scan_mode"
+DEFAULT_SCAN_MODE = "Scan Interval"
 
-class DeviceType(StrEnum):
-    """Sensor types."""
-    VOLTAGE_SENSOR = "voltage_sensor"
-    PERCENTAGE_SENSOR = "percentage_sensor"
-    STATUS_SENSOR = "status_sensor"
+GATT_TIMEOUT = 20
 
-@dataclass
-class Device:
-    """BM2 sensor"""
-#    device_id: int
-    device_unique_id: str
-#    device_address: str
-    device_type: DeviceType
-    device_class: SensorDeviceClass | None
-    device_unit: UnitOfElectricPotential | None
-    device_icon: str | None
-    name: str
-    state: int | str
+BM_NAMES = [
+    "Battery Monitor",
+    "Li Battery Monitor",
+    "ZX-1689"
+]
 
-DEVICES = [
-    {"type": DeviceType.VOLTAGE_SENSOR, "class": SensorDeviceClass.VOLTAGE, "unit": UnitOfElectricPotential.VOLT},
-    {"type": DeviceType.PERCENTAGE_SENSOR, "class": SensorDeviceClass.BATTERY, "unit": PERCENTAGE},
-    {"type": DeviceType.STATUS_SENSOR, "class": None, "unit": None},
+SCAN_MODES = [
+    "Scan Interval",
+    "Bluetooth advertisement",
+    "Bluetooth advertisement while charging, otherwise Scan Interval"
 ]
 
 BATTERY_TYPES = [
@@ -53,7 +32,7 @@ BATTERY_TYPES = [
     "Lithium-ion"
 ]
 
-BATTERY_STATUS = {
+BATTERY_STATUS_LIST = {
     1: "Low",
     2: "Normal",
     4: "Charging",
