@@ -1,34 +1,38 @@
 {
-  "config": {
-    "title": "BM2 battery monitor",
-    "abort": {
-      "already_configured": "Device is already configured",
-      "reconfigure_successful": "Reconfiguration successful"
-    },
-    "error": {
-      "cannot_connect": "Failed to make Bluetooth connection",
-      "invalid_gatt": "Unable to read BM2 data - the selected device doesn't appear to be a BM2 battery monitor",
-      "unknown": "Unexpected error"
-    },
-    "step": {
-      "user": {
-        "data": {
-          "address": "Discovered Bluetooth devices"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "data": {
-          "battery_type": "Battery type",
-          "scan_interval": "Scan interval (seconds)",
-          "persistent_connection": "Maintain a persistent Bluetooth connection between polls, rather than a connection being made and broken at each poll.  Note that your Bluetooth adapter may have a limit to the number of concurrent connections it can support."
+    "config": {
+        "abort": {
+            "already_configured": "The device is already configured.",
+            "reconfig_successful" : "Reconfiguration successful"
         },
-        "title": "Options",
-        "description": ""
-      }
+        "error": {
+            "cannot_connect": "Failed to make a Bluetooth connection.",
+            "no_data": "Unable to read battery info - the selected device doesn't appear to be a BM2 battery monitor."
+        },
+        "step": {
+            "user": {
+                "description": "",
+                "title": "BM2 Battery Monitor",
+                "data": {
+                    "address": "Discovered Bluetooth devices"
+                }
+            },
+            "bluetooth_confirm": {
+                "description": "Do you want to add `{name}` to Home Assistant?",
+                "title": "BM2 Battery Monitor discovered"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Options",
+                "description": "Sensor updates are only ever done when a Bluetooth advertisement is seen, so the rate limit is a way of throttling updates if the device is sending out a lot of advertisements.\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default is extremely optimistic with regards to percentage and overall state!",   
+                "data": {
+                    "scan_mode": "Sensor update trigger",
+                    "scan_interval": "Sensor update rate limit (seconds)",
+                    "battery_type": "Battery chemistry"
+                }
+            }
+        }
     }
-  }
 }
