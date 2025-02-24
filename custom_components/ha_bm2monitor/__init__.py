@@ -1,108 +1,106 @@
-"""The Integration 101 Template integration."""
+"""The BM2 battery monitor integration."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import logging
 
+from .bmx_ble import BMxBluetoothDeviceData, SensorUpdate
+
+from homeassistant.components.bluetooth import (
+    BluetoothScanningMode,
+    BluetoothServiceInfoBleak,
+    async_ble_device_from_address,
+)
+from homeassistant.components.bluetooth.active_update_processor import (
+    ActiveBluetoothProcessorCoordinator
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CoreState, HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.device_registry import DeviceEntry
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
-from .const import DOMAIN, GATT_TIMEOUT, CONNECTION_TIMEOUT
-from .coordinator import ExampleCoordinator
-import asyncio
-
-#_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-
-@dataclass
-class RuntimeData:
-    """Class to hold your data."""
-
-    coordinator: DataUpdateCoordinator
-    cancel_update_listener: Callable
+_LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Set up Example Integration from a config entry."""
+type BMxConfigEntry = ConfigEntry[ActiveBluetoothProcessorCoordinator]
 
-    hass.data.setdefault(DOMAIN, {})
 
-    # Initialise the coordinator that manages data updates from your api.
-    # This is defined in coordinator.py
-    coordinator = ExampleCoordinator(hass, config_entry)
+async def async_setup_entry(hass: HomeAssistant, entry: BMxConfigEntry) -> bool:
+    """Set up BMx BLE device from a config entry."""
+    address = entry.unique_id
+    assert address is not None
+    data = BMxBluetoothDeviceData()
     
-    # Perform an initial data load from api.
-    # async_config_entry_first_refresh() is special in that it does not log errors if it fails
-    await coordinator.async_config_entry_first_refresh()
+    data._options = entry.options
 
-    if coordinator.api.gotdata != True:
-        raise ConfigEntryNotReady
+    def _needs_poll(
+        service_info: BluetoothServiceInfoBleak, last_poll: float | None
+    ) -> bool:
+        # Only poll if hass is running, we need to poll,
+        # and we actually have a way to connect to the device
+        return (
+            hass.state is CoreState.running
+            and data.poll_needed(service_info, last_poll)
+            and bool(
+                async_ble_device_from_address(
+                    hass, service_info.device.address, connectable=True
+                )
+            )
+        )
 
-    # Initialise a listener for config flow options changes.
-    # See config_flow for defining an options setting that shows up as configure on the integration.
-    cancel_update_listener = config_entry.add_update_listener(_async_update_listener)
+    async def _async_poll(service_info: BluetoothServiceInfoBleak) -> SensorUpdate:
+        # BluetoothServiceInfoBleak is defined in HA, otherwise would just pass it
+        # directly to the BMx code
+        # Make sure the device we have is one that we can connect with
+        # in case its coming from a passive scanner
+        if service_info.connectable:
+            connectable_device = service_info.device
+        elif device := async_ble_device_from_address(
+            hass, service_info.device.address, True
+        ):
+            connectable_device = device
+        else:
+            # We have no bluetooth controller that is in range of
+            # the device to poll it
+            raise RuntimeError(
+                f"No connectable device found for {service_info.device.address}"
+            )
+        return await data.async_poll(connectable_device)
 
-    # Add the coordinator and update listener to hass data to make
-    # accessible throughout your integration
-    # Note: this will change on HA2024.6 to save on the config entry.
-    hass.data[DOMAIN][config_entry.entry_id] = RuntimeData(
-        coordinator, cancel_update_listener
+    coordinator = entry.runtime_data = ActiveBluetoothProcessorCoordinator(
+        hass,
+        _LOGGER,
+        address=address,
+        mode=BluetoothScanningMode.PASSIVE,
+        update_method=data.update,
+        needs_poll_method=_needs_poll,
+        poll_method=_async_poll,
+        # We will take advertisements from non-connectable devices
+        # since we will trade the BLEDevice for a connectable one
+        # if we need to poll it
+        connectable=False,
     )
-
-    # Setup platforms (based on the list of entity types in PLATFORMS defined above)
-    # This calls the async_setup method in each of your entity type files.
-    #for platform in PLATFORMS:
-    #    hass.async_create_task(
-    #        hass.config_entries.async_forward_entry_setup(config_entry, platform)
-    #    )
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-
-    # Return true to denote a successful setup.
+        
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # only start after all platforms have had a chance to subscribe
+    entry.async_on_unload(coordinator.async_start())
+    
+    # Reload if the options change
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, config_entry):
+async def async_unload_entry(hass: HomeAssistant, entry: BMxConfigEntry) -> bool:
+    """Unload a config entry."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: BMxConfigEntry):
     """Handle config options update."""
 
-    # We may not need to call this, as options changes are cosmetic
-    # Test changing self.update_interval from within coordinator/async_update_data
-
     # Reload the integration when the options change.
-    await hass.config_entries.async_reload(config_entry.entry_id)
-
-async def async_remove_config_entry_device(
-    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: DeviceEntry
-) -> bool:
-    """Delete device if selected from UI."""
-    # Adding this function shows the delete device option in the UI.
-    # Remove this function if you do not want that option.
-    # You may need to do some checks here before allowing devices to be removed.
-    return True
-
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    # This is called when you remove your integration or shutdown HA.
-    # If you have created any custom services, they need to be removed here too.
-
-    # Remove the config options update listener
-    hass.data[DOMAIN][config_entry.entry_id].cancel_update_listener()
-
-    # Unload platforms
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        config_entry, PLATFORMS
-    )
-
-    # Remove the config entry from the hass data object.
-    if unload_ok:
-        hass.data[DOMAIN].pop(config_entry.entry_id)
-
-    # Return that unloading was successful.
-    return unload_ok
+    _LOGGER.error("init/_async_update_listener")
+    await hass.config_entries.async_reload(entry.entry_id)
+    
