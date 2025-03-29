@@ -101,6 +101,6 @@ async def _async_update_listener(hass: HomeAssistant, entry: BMxConfigEntry):
     """Handle config options update."""
 
     # Reload the integration when the options change.
-    #_LOGGER.error("init/_async_update_listener")
+    _LOGGER.debug("Options have changed, reloading integration")
     await hass.config_entries.async_reload(entry.entry_id)
     
