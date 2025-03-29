@@ -299,7 +299,7 @@ class BMxBluetoothDeviceData(BluetoothData):
         """ Use self.battery_type to determine if we need to adjust the status based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
-        if battery_type == "Automatic (via BM2)" # or raw_status == 4:  # Charging
+        if battery_type == "Automatic (via BM2)": # or raw_status == 4:  # Charging
             # Just return whatever the BM2 is telling us
             return raw_status
 
