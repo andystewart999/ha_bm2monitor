@@ -207,7 +207,7 @@ class BMxBluetoothDeviceData(BluetoothData):
 
             # Carry out any adjustments as defined by the battery type
             percentage = self._adjust_percentage(percentage, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
-            status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), percentage)
+            status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), percentage, voltage)
             _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
             
             # Convert status into something human_readable
@@ -292,13 +292,14 @@ class BMxBluetoothDeviceData(BluetoothData):
             case _:
                 return raw_percentage
         
+        _LOGGER.debug ("Adjusting percentage based on battery chemistry of %s: current voltage = %s, default percentage = %s", battery_type, str(voltage), str(raw_percentage))
         return int(np.interp(voltage, np_voltage, np_percent))
 
-    def _adjust_status(self, raw_status: int, battery_type: str, percentage: int) -> int:
+    def _adjust_status(self, raw_status: int, battery_type: str, percentage: int, voltage: float) -> int:
         """ Use self.battery_type to determine if we need to adjust the status based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
-        if battery_type == "Automatic (via BM2)" or raw_status == 4:  # Charging
+        if battery_type == "Automatic (via BM2)" # or raw_status == 4:  # Charging
             # Just return whatever the BM2 is telling us
             return raw_status
 
@@ -306,28 +307,37 @@ class BMxBluetoothDeviceData(BluetoothData):
             case "AGM":
                 low_percentage = 30
                 critical_percentage = 20
+                charging_voltage = 13.6
                 
             case "Deep-cycle":
                 low_percentage = 50
                 critical_percentage = 20
+                charging_voltage = 13.6
                 
             case "Lead-acid":
                 low_percentage = 60
                 critical_percentage = 50
+                charging_voltage = 13.9
             
             case "LiFePO4":
                 low_percentage = 20
                 critical_percentage = 5
+                charging_voltage = 13.9
             
             case "Lithium-ion":
                 low_percentage = 30
                 critical_percentage = 20
+                charging_voltage = 13.7
 
             case _:
                 low_percentage = 60
                 critical_percentage = 50
+                charging_voltage = 13.9
 
-        if percentage <= critical_percentage:
+        _LOGGER.debug ("Adjusting state based on battery chemistry of %s: low percentage = %s, critical percentage = %s, charging voltage = %s, current voltage = %s", battery_type, str(low_percentage), str(critical_percentage), str(charging_voltage), str(voltage))
+        if voltage >= charging_voltage:
+            return 4    # Charging
+        elif percentage <= critical_percentage:
             return 8    # Critical
         elif percentage <= low_percentage:
             return 1    # Low
