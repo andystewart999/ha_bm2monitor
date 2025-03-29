@@ -160,13 +160,18 @@ class BMxBluetoothDeviceData(BluetoothData):
 
         scan_mode = self._options.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE)
 
-        if scan_mode == "Bluetooth advertisement":
+        if scan_mode == "Never rate limit sensor updates":
+            _LOGGER.debug("Sensor updates not rate-limited, returning poll_needed == True")
             return True
-        elif scan_mode == "Bluetooth advertisement while charging, otherwise Scan Interval" and self._charging == True:
+        elif scan_mode == "Only rate limit when not charging" and self._charging == True:
+            _LOGGER.debug("Sensor updates not rate-limited during charging, returning poll_needed == True")
             return True
-            
+    
         update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        return last_poll > update_interval
+        pollneeded = last_poll > update_interval
+        _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
+
+        return pollneeded
 
     @retry_bluetooth_connection_error()
     async def _get_payload(self, client: BleakClientWithServiceCache) -> None:
@@ -198,10 +203,12 @@ class BMxBluetoothDeviceData(BluetoothData):
             voltage = int(raw[2:5],16) / 100.0
             percentage = int(raw[6:8],16)
             status = int(raw[5:6],16)
-            
+            _LOGGER.debug("Raw characteristic data: voltage = %s, percentage = %s, status = %s", str(voltage), str(percentage), str(status))
+
             # Carry out any adjustments as defined by the battery type
             percentage = self._adjust_percentage(percentage, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
             status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), percentage)
+            _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
             
             # Convert status into something human_readable
             status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
