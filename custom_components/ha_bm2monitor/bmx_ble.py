@@ -307,38 +307,46 @@ class BMxBluetoothDeviceData(BluetoothData):
             case "AGM":
                 low_percentage = 30
                 critical_percentage = 20
-                charging_voltage = 13.6
+                float_voltage = 13.7
+                charging_voltage = 14.25
                 
             case "Deep-cycle":
                 low_percentage = 50
                 critical_percentage = 20
-                charging_voltage = 13.6
+                float_voltage = 13.6
+                charging_voltage = 14.4
                 
             case "Lead-acid":
                 low_percentage = 60
                 critical_percentage = 50
-                charging_voltage = 13.9
+                float_voltage = 13.3
+                charging_voltage = 14.25
             
             case "LiFePO4":
                 low_percentage = 20
                 critical_percentage = 5
+                float_voltage = 13.5
                 charging_voltage = 13.9
             
             case "Lithium-ion":
                 low_percentage = 30
                 critical_percentage = 20
-                charging_voltage = 13.7
+                float_voltage = 13.5
+                charging_voltage = 14.25
 
             case _:
                 low_percentage = 60
                 critical_percentage = 50
+                float_voltage = 13.6
                 charging_voltage = 13.9
 
         _LOGGER.debug ("Adjusting state based on battery chemistry of %s: low percentage = %s, critical percentage = %s, charging voltage = %s, current voltage = %s", battery_type, str(low_percentage), str(critical_percentage), str(charging_voltage), str(voltage))
         if voltage >= charging_voltage:
-            return 4    # Charging
+            return 8    # Charging
+        elif voltage >= float_voltage:
+            return 4    # Floating
         elif percentage <= critical_percentage:
-            return 8    # Critical
+            return 0    # Critical
         elif percentage <= low_percentage:
             return 1    # Low
         else:
