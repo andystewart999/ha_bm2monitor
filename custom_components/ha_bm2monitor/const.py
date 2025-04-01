@@ -17,11 +17,13 @@ BM_NAMES = [
     "ZX-1689"
 ]
 
+
 SCAN_MODES = [
     "Always rate limit sensor updates",
     "Never rate limit sensor updates",
     "Only rate limit when not charging"
 ]
+
 
 BATTERY_TYPES = [
     "Automatic (via BM2)",
@@ -33,15 +35,17 @@ BATTERY_TYPES = [
 ]
 
 BATTERY_STATUS_LIST = {
+    0: "Critical",
     1: "Low",
     2: "Normal",
-    4: "Charging",
-    8: "Critical"
+    4: "Floating",
+    0: "Charging"
 }
 
 BATTERY_STATUS_ICON = {
+    "Critical" : "mdi:battery-remove-outline",
     "Low" : "mdi:battery-arrow-down-outline",
     "Normal" : "mdi:battery-check",
-    "Charging" : "mdi:battery-charging-100",
-    "Critical" : "mdi:battery-remove-outline"
+    "Floating" : "mdi:battery-sync",
+    "Charging" : "mdi:battery-charging-100"
 }
