@@ -207,7 +207,7 @@ class BMxBluetoothDeviceData(BluetoothData):
 
             # Carry out any adjustments as defined by the battery type
             percentage = self._adjust_percentage(percentage, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
-            status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), percentage, voltage)
+            status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
             _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
             
             # Convert status into something human_readable
@@ -283,8 +283,8 @@ class BMxBluetoothDeviceData(BluetoothData):
                 np_voltage = [10.5, 11.31, 11.58, 11.75, 11.9, 12.06, 12.2, 12.32, 12.42, 12.5, 12.7]
             
             case "LiFePO4":
-                np_percent = [0, 9, 14, 17, 20, 30, 40, 70, 90, 99, 100]
-                np_voltage = [10.0, 12.0, 12.5, 12.8, 12.9, 13.0, 13.1, 13.2, 13.3, 13.4, 13.6]
+                #np_percent = [0, 9, 14, 17, 20, 30, 40, 70, 90, 99, 100]
+                np_voltage = [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6]
             
             case "Lithium-ion":
                 np_voltage = [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6]
@@ -295,7 +295,7 @@ class BMxBluetoothDeviceData(BluetoothData):
         _LOGGER.debug ("Adjusting percentage based on battery chemistry of %s: current voltage = %s, default percentage = %s", battery_type, str(voltage), str(raw_percentage))
         return int(np.interp(voltage, np_voltage, np_percent))
 
-    def _adjust_status(self, raw_status: int, battery_type: str, percentage: int, voltage: float) -> int:
+    def _adjust_status(self, raw_status: int, battery_type: str, voltage: float) -> int:
         """ Use self.battery_type to determine if we need to adjust the status based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
@@ -305,38 +305,38 @@ class BMxBluetoothDeviceData(BluetoothData):
 
         match battery_type:
             case "AGM":
-                low_percentage = 30
-                critical_percentage = 20
+                low_voltage = 11.81
+                critical_voltage = 11.66
                 float_voltage = 13.6
                 charging_voltage = 14.3
                 
             case "Deep-cycle":
-                low_percentage = 50
-                critical_percentage = 20
+                low_voltage = 12.05
+                critical_voltage = 11.66
                 float_voltage = 13.6
                 charging_voltage = 14.4
                 
             case "Lead-acid":
-                low_percentage = 60
-                critical_percentage = 50
+                low_voltage = 12.2
+                critical_voltage = 12.06
                 float_voltage = 13.7
                 charging_voltage = 14.5
             
             case "LiFePO4":
-                low_percentage = 20
-                critical_percentage = 5
+                low_voltage = 12.0
+                critical_voltage = 10.5
                 float_voltage = 13.5
                 charging_voltage = 14.4
             
             case "Lithium-ion":
-                low_percentage = 30
-                critical_percentage = 20
+                low_voltage = 12.0
+                critical_voltage = 10.5
                 float_voltage = 13.5
                 charging_voltage = 14.25
 
             case _:
-                low_percentage = 60
-                critical_percentage = 50
+                low_voltage = 60
+                critical_voltage = 50
                 float_voltage = 13.6
                 charging_voltage = 13.9
 
@@ -345,9 +345,9 @@ class BMxBluetoothDeviceData(BluetoothData):
             return 8    # Charging
         elif voltage >= float_voltage:
             return 4    # Floating
-        elif percentage <= critical_percentage:
+        elif volrage <= critical_voltage:
             return 0    # Critical
-        elif percentage <= low_percentage:
+        elif voltage <= low_voltage:
             return 1    # Low
         else:
             return 2    # Normal
