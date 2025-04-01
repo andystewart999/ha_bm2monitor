@@ -39,7 +39,7 @@ BATTERY_STATUS_LIST = {
     1: "Low",
     2: "Normal",
     4: "Floating",
-    0: "Charging"
+    8: "Charging"
 }
 
 BATTERY_STATUS_ICON = {
