@@ -307,8 +307,8 @@ class BMxBluetoothDeviceData(BluetoothData):
             case "AGM":
                 low_percentage = 30
                 critical_percentage = 20
-                float_voltage = 13.7
-                charging_voltage = 14.25
+                float_voltage = 13.6
+                charging_voltage = 14.3
                 
             case "Deep-cycle":
                 low_percentage = 50
@@ -319,14 +319,14 @@ class BMxBluetoothDeviceData(BluetoothData):
             case "Lead-acid":
                 low_percentage = 60
                 critical_percentage = 50
-                float_voltage = 13.3
-                charging_voltage = 14.25
+                float_voltage = 13.7
+                charging_voltage = 14.5
             
             case "LiFePO4":
                 low_percentage = 20
                 critical_percentage = 5
                 float_voltage = 13.5
-                charging_voltage = 13.9
+                charging_voltage = 14.4
             
             case "Lithium-ion":
                 low_percentage = 30
