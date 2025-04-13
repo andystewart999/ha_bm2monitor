@@ -198,16 +198,16 @@ class BMxBluetoothDeviceData(BluetoothData):
 
         if scan_mode == "Never rate limit sensor updates":
             _LOGGER.debug("Sensor updates not rate-limited, returning poll_needed == True")
-            return True
+            pollneeded =  True
         elif scan_mode == "Only rate limit when not charging" and self._charging == True:
             _LOGGER.debug("Sensor updates not rate-limited during charging, returning poll_needed == True")
-            return True
-    
-        update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
+            pollneeded = True
+        else
+            update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
 
-        pollneeded = last_poll > update_interval
-        _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
+            pollneeded = last_poll > update_interval
+            _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
 
         return pollneeded
 
@@ -261,7 +261,8 @@ class BMxBluetoothDeviceData(BluetoothData):
             
             # Convert status into something human_readable
             status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
-            
+
+            _LOGGER.debug("Updating sensors")
             self.update_sensor(
                 key = str(BMxSensor.BATTERY_PERCENT),
                 native_unit_of_measurement = PERCENTAGE,
@@ -287,11 +288,14 @@ class BMxBluetoothDeviceData(BluetoothData):
             # Update internal charging flag
             if status >= 4: #charging or floating, ie attached to a powered-on charger
                 self._charging = True
-                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
             else:
                 self._charging = False
-                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
-            
+
+            _LOGGER.debug("Setting self._charging = %s", str(self._charging))
+
+        else
+            _LOGGER.warn("Timeout attempting to read characteristic %s", self._model_info.characteristic)
+
     def notification_handler(self, sender, data):
         """Simple bluetooth notification handler"""
         self._gattdata = data
