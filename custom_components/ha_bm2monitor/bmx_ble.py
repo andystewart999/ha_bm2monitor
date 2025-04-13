@@ -8,7 +8,6 @@ MIT License applies.
 
 from __future__ import annotations
 
-
 from sensor_state_data import (
     BinarySensorDeviceClass,
     BinarySensorValue,
@@ -36,6 +35,7 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
+#from enum import StrEnum
 
 from bleak import BleakError, BLEDevice
 from bleak_retry_connector import (
@@ -70,7 +70,6 @@ class BMxSensor(StrEnum):
     BATTERY_VOLTAGE = "battery_voltage"
     SIGNAL_STRENGTH = "signal_strength"
 
-
 @dataclass
 class ModelDescription:
     device_type: str
@@ -84,17 +83,16 @@ class Models(Enum):
     BM6 = auto() # Placeholder - not yet supported
 
 # Placeholder for future support of BM6...
-BYTES_TO_MODEL = {
-    b'\x03"': Models.BM2,
-    b'\x04"': Models.BM6,
-}
+#BYTES_TO_MODEL = {
+#    b'\x03"': Models.BM2,
+#    b'\x04"': Models.BM6,
+#}
 
 DEVICE_TYPES = {
     Models.BM2: ModelDescription(
         device_type="BM2 battery monitor",
-        identifier = 0x004C,  #TBD if this is going to work
+        identifier = BMx_MANUFACTURER,  #TBD if this is going to work
         characteristic = "{0000fff4-0000-1000-8000-00805f9b34fb}"
-
     ),
     Models.BM6: ModelDescription(
         device_type="BM6 battery monitor",
@@ -103,6 +101,41 @@ DEVICE_TYPES = {
     )
 }
 
+
+class Battery(StrEnum):
+    agm = "agm"
+    deepcycle = "deepcycle"
+    leadacid = "leadacid"
+    lifepo4 = "lifepo4"
+    lithiumion = "lithiumion"
+
+@dataclass
+class BatteryDetail:
+    battery_chemistry: str
+    volts_to_percent: list
+    critical_voltage: int
+    low_voltage: int
+    floating_voltage: float
+    charging_voltage: float
+
+BATTERIES = {
+    Battery.agm:        BatteryDetail("AGM", [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8, 12.85], 11.66, 11.81, 13.6, 14.3),
+    Battery.deepcycle:  BatteryDetail("Deep-cycle", [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8], 11.66, 12.05, 13.6, 14.4),
+    Battery.leadacid:   BatteryDetail("Lead-acid", [10.5, 11.31, 11.58, 11.75, 11.9, 12.06, 12.2, 12.32, 12.42, 12.5, 12.7], 12.06, 12.2, 13.7, 14.5),
+    Battery.lifepo4:    BatteryDetail("LiFePO4", [10.0, 12.0, 12.5, 12.8, 12.9, 13.0, 13.1, 13.2, 13.3, 13.4, 13.6], 10.5, 12.0, 13.5, 14.4),
+    Battery.lithiumion: BatteryDetail("Lithium-ion", [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6], 10.5, 12.0, 13.5, 14.25)
+}
+
+# Can we do this with a one-liner 'any' call, and is that more efficient?  Probably!  #TODO
+CHEMISTRY_OPTION_TO_BATTERY = {
+    "AGM": Battery.agm,
+    "Deep-cycle": Battery.deepcycle,
+    "Lead-acid": Battery.leadacid,
+    "LifePO4": Battery.lifepo4,
+    "Lithium-ion": Battery.lithiumion
+}
+
+
 class BMxBluetoothDeviceData(BluetoothData):
     """Data for BMx BLE sensors."""
 
@@ -110,7 +143,7 @@ class BMxBluetoothDeviceData(BluetoothData):
         super().__init__()
 
         # If this is True we are currently charging
-        self._charging = None
+        self._charging = False
         
         # Somewhere to temporarily store GATT data, and capture that we're waiting for data
         self._gattdata = None
@@ -152,6 +185,8 @@ class BMxBluetoothDeviceData(BluetoothData):
         device is working and online.
         """
 
+        _LOGGER.debug("Inside 'poll_needed', _ignore_advertisement = %s, _charging = %s, _model_info = %s", str(self._ignore_advertisement), str(self._charging), str(self._model_info))
+
         if self._ignore_advertisement == True:
             return False
 
@@ -159,6 +194,7 @@ class BMxBluetoothDeviceData(BluetoothData):
             return True
 
         scan_mode = self._options.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE)
+        _LOGGER.debug("Inside 'poll_needed', scan_mode = %s", scan_mode)
 
         if scan_mode == "Never rate limit sensor updates":
             _LOGGER.debug("Sensor updates not rate-limited, returning poll_needed == True")
@@ -168,6 +204,8 @@ class BMxBluetoothDeviceData(BluetoothData):
             return True
     
         update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
+
         pollneeded = last_poll > update_interval
         _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
 
@@ -205,10 +243,21 @@ class BMxBluetoothDeviceData(BluetoothData):
             status = int(raw[5:6],16)
             _LOGGER.debug("Raw characteristic data: voltage = %s, percentage = %s, status = %s", str(voltage), str(percentage), str(status))
 
-            # Carry out any adjustments as defined by the battery type
-            percentage = self._adjust_percentage(percentage, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
-            status = self._adjust_status(status, self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE), voltage)
-            _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
+            """ Carry out any adjustments as defined by the battery type
+                In keeping with the oralb-ble implementation, at each poll we're doing a battery type lookup
+                Seems a bit inefficient, in the future I'll probably change this to only capture it once at
+                startup, and if the options change """
+
+            battery_option = self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE)
+            
+            if battery_option != "Automatic (via BM2)":
+                # We only need to make potential adjustments to status and percentage if a specific battery chemistry has been selected
+                battery_chemistry = CHEMISTRY_OPTION_TO_BATTERY[battery_option]
+                battery_detail = BATTERIES[battery_chemistry]
+            
+                percentage = self._adjust_percentage(percentage, battery_detail, voltage)
+                status = self._adjust_status(status, battery_detail, voltage)
+                _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
             
             # Convert status into something human_readable
             status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
@@ -236,10 +285,12 @@ class BMxBluetoothDeviceData(BluetoothData):
             )
 
             # Update internal charging flag
-            if status == 4:
+            if status >= 4: #charging or floating, ie attached to a powered-on charger
                 self._charging = True
+                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
             else:
                 self._charging = False
+                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
             
     def notification_handler(self, sender, data):
         """Simple bluetooth notification handler"""
@@ -263,92 +314,36 @@ class BMxBluetoothDeviceData(BluetoothData):
             _LOGGER.debug("Disconnected from active bluetooth client")
         return self._finish_update()
 
-    def _adjust_percentage(self, raw_percentage: int, battery_type: str, voltage: float) -> int:
-        """ Use battery_type to determine if we need to adjust the percentage based on voltage
+    def _adjust_percentage(self, raw_percentage: int, battery_detail, voltage: float) -> int:
+        """ Use battery_detail to determine if we need to adjust the percentage based on voltage
             BM2's default percentage and status values are extremely optimistic! """
-            
+
+        # Using numpy for voltage/percentage calculation interpolation
         np_percent = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        np_voltage = battery_detail.volts_to_percent
 
-        match battery_type:
-            case "Automatic (via BM2)":
-                return raw_percentage
-                
-            case "AGM":
-                np_voltage = [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8, 12.85]
-                
-            case "Deep-cycle":
-                np_voltage = [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8]
-                
-            case "Lead-acid":
-                np_voltage = [10.5, 11.31, 11.58, 11.75, 11.9, 12.06, 12.2, 12.32, 12.42, 12.5, 12.7]
-            
-            case "LiFePO4":
-                #np_percent = [0, 9, 14, 17, 20, 30, 40, 70, 90, 99, 100]
-                np_voltage = [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6]
-            
-            case "Lithium-ion":
-                np_voltage = [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6]
-                
-            case _:
-                return raw_percentage
-        
-        _LOGGER.debug ("Adjusting percentage based on battery chemistry of %s: current voltage = %s, default percentage = %s", battery_type, str(voltage), str(raw_percentage))
-        return int(np.interp(voltage, np_voltage, np_percent))
+        new_percentage = int(np.interp(voltage, np_voltage, np_percent))
+        _LOGGER.debug ("Adjusting percentage based on battery chemistry of %s: actual voltage = %s, raw percentage = %s, updated percentage = %s", battery_detail.battery_chemistry, str(voltage), str(raw_percentage), str(new_percentage))
 
-    def _adjust_status(self, raw_status: int, battery_type: str, voltage: float) -> int:
-        """ Use self.battery_type to determine if we need to adjust the status based on voltage
-            BM2's default percentage and status values are extremely optimistic! """
+        return new_percentage
 
-        if battery_type == "Automatic (via BM2)": # or raw_status == 4:  # Charging
-            # Just return whatever the BM2 is telling us
-            return raw_status
+    def _adjust_status(self, raw_status: int, battery_detail, voltage: float) -> int:
+        """ Use battery_detail to determine if we need to adjust the status based on voltage
+            BM2's default percentage and status values are extremely optimistic!
+            Obviously I'd prefer to use 4 for floating and 8 for charging, but the
+            BM2 doesn't distinguish between the two """
 
-        match battery_type:
-            case "AGM":
-                low_voltage = 11.81
-                critical_voltage = 11.66
-                float_voltage = 13.6
-                charging_voltage = 14.3
-                
-            case "Deep-cycle":
-                low_voltage = 12.05
-                critical_voltage = 11.66
-                float_voltage = 13.6
-                charging_voltage = 14.4
-                
-            case "Lead-acid":
-                low_voltage = 12.2
-                critical_voltage = 12.06
-                float_voltage = 13.7
-                charging_voltage = 14.5
-            
-            case "LiFePO4":
-                low_voltage = 12.0
-                critical_voltage = 10.5
-                float_voltage = 13.5
-                charging_voltage = 14.4
-            
-            case "Lithium-ion":
-                low_voltage = 12.0
-                critical_voltage = 10.5
-                float_voltage = 13.5
-                charging_voltage = 14.25
-
-            case _:
-                low_voltage = 60
-                critical_voltage = 50
-                float_voltage = 13.6
-                charging_voltage = 13.9
-
-        _LOGGER.debug ("Adjusting state based on battery chemistry of %s: low percentage = %s, critical percentage = %s, charging voltage = %s, current voltage = %s", battery_type, str(low_percentage), str(critical_percentage), str(charging_voltage), str(voltage))
-        if voltage >= charging_voltage:
-            return 8    # Charging
-        elif voltage >= float_voltage:
-            return 4    # Floating
-        elif volrage <= critical_voltage:
-            return 0    # Critical
-        elif voltage <= low_voltage:
-            return 1    # Low
+        if voltage >= battery_detail.charging_voltage:
+            new_status =  4    # Charging
+        elif voltage >= battery_detail.floating_voltage:
+            new_status =  8    # Floating
+        elif voltage <= battery_detail.critical_voltage:
+            new_status =  0    # Critical
+        elif voltage <= battery_detail.low_voltage:
+            new_status =  1    # Low
         else:
-            return 2    # Normal
-
+            new_status =  2    # Normal
+        
+        _LOGGER.debug ("Adjusting state based on battery chemistry of %s: critical voltage = %s, low voltage = %s, float voltage = %s, charging voltage = %s, actual voltage = %s, raw state = %s, updated state = %s", battery_detail.battery_chemistry, str(battery_detail.critical_voltage), str(battery_detail.low_voltage), str(battery_detail.floating_voltage), str(battery_detail.charging_voltage), str(voltage), str(raw_status), str(new_status))
+        
+        return new_status
