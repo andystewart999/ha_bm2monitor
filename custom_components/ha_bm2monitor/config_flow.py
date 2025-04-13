@@ -78,7 +78,7 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         title = "BM2 battery monitor (" + short_address(discovery_info.address) + ")"
         
         # In this scenario (an auto-discovered device) there aren't any questions to ask, so ideally just go ahead and add it
-        # When I went straight into async_create_entry though, for some reason it broke device removal!  So we get an informational 'OK to add' confnfirmation
+        # When I went straight into async_create_entry though, for some reason it broke device removal!  So we get an informational 'OK to add' confirmation
         if user_input is not None:
             return self.async_create_entry(title=title, data={})
 
