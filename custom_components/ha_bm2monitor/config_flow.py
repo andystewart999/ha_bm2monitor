@@ -26,7 +26,23 @@ from .const import (
     BATTERY_TYPES,
     CONF_BATTERY_TYPE,
     DEFAULT_BATTERY_TYPE,
-    BM_NAMES
+    BM_NAMES,
+    CONF_CUSTOM_BATTERY_CHEMISTRY,
+    DEFAULT_CUSTOM_BATTERY_CHEMISTRY,
+    CONF_CUSTOM_CRITICAL_VOLTAGE,
+    DEFAULT_CUSTOM_CRITICAL_VOLTAGE,
+    CONF_CUSTOM_LOW_VOLTAGE,
+    DEFAULT_CUSTOM_LOW_VOLTAGE,
+    CONF_CUSTOM_FLOATING_VOLTAGE,
+    DEFAULT_CUSTOM_FLOATING_VOLTAGE,
+    CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE,
+    DEFAULT_CUSTOM_FIFTY_PERCENT_VOLTAGE,
+    CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
+    DEFAULT_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
+    CONF_CUSTOM_CHARGING_VOLTAGE,
+    DEFAULT_CUSTOM_CHARGING_VOLTAGE,
+    CONF_CUSTOM_NUMPY_VOLTS,
+    CONF_CUSTOM_NUMPY_PERCENT,
 )
 
 import logging
@@ -59,7 +75,7 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         device = DeviceData()
         
         if not discovery_info.name in BM_NAMES:
-            _LOGGER.error("bm2 - device not supported - " + str(discovery_info.address))
+            _LOGGER.error("BM2 - device not supported - " + str(discovery_info.address))
             return self.async_abort(reason="not_supported")
 
         self._discovery_info = discovery_info
@@ -89,7 +105,6 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="bluetooth_confirm", description_placeholders=placeholders
         )
 
-
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -104,7 +119,6 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
 
         current_addresses = self._async_current_ids(include_ignore=False)
         for discovery_info in async_discovered_service_info(self.hass, False):
-            _LOGGER.error("in config_flow/async_step_user: %s", str(discovery_info.name))
             address = discovery_info.address
             if address in current_addresses or address in self._discovered_devices:
                 continue
@@ -130,10 +144,17 @@ class BMxOptionsFlow(OptionsFlow):
     """Handles the options flow."""
 
     async def async_step_init(self, user_input=None) -> FlowResult:
-        """Handle options flow."""
+        """Handle options flow page 1"""
         if user_input is not None:
-            #options = self.config_entry.options | user_input
-            return self.async_create_entry(title="", data=user_input)
+            # Save the current user input for later
+            self.user_input = user_input
+
+            # If the battery type is Custom then we need to ask for the custom settings
+            if user_input[CONF_BATTERY_TYPE] == "Custom":
+                return await self.async_step_custom_battery_details()
+            else:
+                # return self.async_create_entry(title="", data=self.user_input)
+                return self.async_create_entry(title="", data=self.user_input)
 
         # Populate the schema with default values or whatever's been set already
         data_schema = vol.Schema(
@@ -155,3 +176,55 @@ class BMxOptionsFlow(OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=data_schema)
         
+    async def async_step_custom_battery_details(self, user_input_2=None) -> FlowResult:
+        """Handle options flow page 2"""
+        if user_input_2 is not None:
+            temp_numpy_volts = []
+            temp_numpy_percent = [0, 20, 50, 100]
+
+            temp_numpy_volts.append (float(user_input_2[CONF_CUSTOM_CRITICAL_VOLTAGE]))
+            temp_numpy_volts.append (float(user_input_2[CONF_CUSTOM_LOW_VOLTAGE]))
+            temp_numpy_volts.append (float(user_input_2[CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE]))
+            temp_numpy_volts.append (float(user_input_2[CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE]))
+
+            self.user_input = self.user_input | user_input_2
+            self.user_input[CONF_CUSTOM_NUMPY_VOLTS] = temp_numpy_volts
+            self.user_input[CONF_CUSTOM_NUMPY_PERCENT] = temp_numpy_percent
+
+            return self.async_create_entry(title="", data=self.user_input)
+
+        # Populate the schema with default values or whatever's been set already
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_CUSTOM_BATTERY_CHEMISTRY,
+                    default=self.config_entry.options.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY),
+                ): str,
+                vol.Required(
+                    CONF_CUSTOM_CRITICAL_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+                vol.Required(
+                    CONF_CUSTOM_LOW_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+                vol.Required(
+                    CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE, DEFAULT_CUSTOM_FIFTY_PERCENT_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+                vol.Required(
+                    CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE, DEFAULT_CUSTOM_HUNDRED_PERCENT_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+                vol.Required(
+                    CONF_CUSTOM_FLOATING_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+                vol.Required(
+                    CONF_CUSTOM_CHARGING_VOLTAGE,
+                    default=self.config_entry.options.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE),
+                ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
+            }
+        )
+
+        return self.async_show_form(step_id="custom_battery_details", data_schema=data_schema)
