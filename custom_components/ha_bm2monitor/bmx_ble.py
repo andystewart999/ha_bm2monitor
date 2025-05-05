@@ -28,8 +28,29 @@ from .const import (
     DEFAULT_BATTERY_TYPE,
     BATTERY_STATUS_LIST,
     BATTERY_STATUS_ICON,
-    GATT_TIMEOUT
+    GATT_TIMEOUT,
+    CONF_CUSTOM_BATTERY_CHEMISTRY,
+    DEFAULT_CUSTOM_BATTERY_CHEMISTRY,
+    CONF_CUSTOM_CRITICAL_VOLTAGE,
+    DEFAULT_CUSTOM_CRITICAL_VOLTAGE,
+    CONF_CUSTOM_LOW_VOLTAGE,
+    DEFAULT_CUSTOM_LOW_VOLTAGE,
+    CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE,
+    DEFAULT_CUSTOM_FIFTY_PERCENT_VOLTAGE,
+    CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
+    DEFAULT_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
+    CONF_CUSTOM_FLOATING_VOLTAGE,
+    DEFAULT_CUSTOM_FLOATING_VOLTAGE,
+    CONF_CUSTOM_CHARGING_VOLTAGE,
+    DEFAULT_CUSTOM_CHARGING_VOLTAGE,
+    CONF_CUSTOM_NUMPY_VOLTS,
+    DEFAULT_CUSTOM_NUMPY_VOLTS,
+    CONF_CUSTOM_NUMPY_PERCENT,
+    DEFAULT_CUSTOM_NUMPY_PERCENT
 )
+
+
+
 
 import logging
 import time
@@ -108,6 +129,8 @@ class Battery(StrEnum):
     leadacid = "leadacid"
     lifepo4 = "lifepo4"
     lithiumion = "lithiumion"
+    itech120x = "itech120x"
+    custom = "custom"
 
 @dataclass
 class BatteryDetail:
@@ -123,7 +146,9 @@ BATTERIES = {
     Battery.deepcycle:  BatteryDetail("Deep-cycle", [10.5, 11.51, 11.66, 11.81, 11.95, 12.05, 12.15, 12.3, 12.5, 12.75, 12.8], 11.66, 12.05, 13.6, 14.4),
     Battery.leadacid:   BatteryDetail("Lead-acid", [10.5, 11.31, 11.58, 11.75, 11.9, 12.06, 12.2, 12.32, 12.42, 12.5, 12.7], 12.06, 12.2, 13.7, 14.5),
     Battery.lifepo4:    BatteryDetail("LiFePO4", [10.0, 12.0, 12.5, 12.8, 12.9, 13.0, 13.1, 13.2, 13.3, 13.4, 13.6], 10.5, 12.0, 13.5, 14.4),
-    Battery.lithiumion: BatteryDetail("Lithium-ion", [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6], 10.5, 12.0, 13.5, 14.25)
+    Battery.lithiumion: BatteryDetail("Lithium-ion", [10.0, 12.0, 12.8, 12.9, 13.0, 13.05, 13.1, 13.2, 13.3, 13.4, 13.6], 10.5, 12.0, 13.5, 14.25),
+    Battery.itech120x:  BatteryDetail("iTechworld 120X (LiFePO4)", [9.5, 10.5, 12.5, 12.7, 12.8, 12.89, 12.91, 12.99, 13.01, 13.1, 13.5], 10.5, 12.5, 13.5, 14.35),
+    Battery.custom:     BatteryDetail("Custom", [10.5, 11.58, 12.06, 13.6], 12.06, 12.2, 13.7, 14.5)
 }
 
 # Can we do this with a one-liner 'any' call, and is that more efficient?  Probably!  #TODO
@@ -132,7 +157,9 @@ CHEMISTRY_OPTION_TO_BATTERY = {
     "Deep-cycle": Battery.deepcycle,
     "Lead-acid": Battery.leadacid,
     "LifePO4": Battery.lifepo4,
-    "Lithium-ion": Battery.lithiumion
+    "Lithium-ion": Battery.lithiumion,
+    "itech120x": Battery.itech120x,
+    "Custom": Battery.custom
 }
 
 
@@ -198,16 +225,16 @@ class BMxBluetoothDeviceData(BluetoothData):
 
         if scan_mode == "Never rate limit sensor updates":
             _LOGGER.debug("Sensor updates not rate-limited, returning poll_needed == True")
-            pollneeded =  True
+            return True
         elif scan_mode == "Only rate limit when not charging" and self._charging == True:
             _LOGGER.debug("Sensor updates not rate-limited during charging, returning poll_needed == True")
-            pollneeded = True
-        else
-            update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
+            return True
+    
+        update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
 
-            pollneeded = last_poll > update_interval
-            _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
+        pollneeded = last_poll > update_interval
+        _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
 
         return pollneeded
 
@@ -252,17 +279,28 @@ class BMxBluetoothDeviceData(BluetoothData):
             
             if battery_option != "Automatic (via BM2)":
                 # We only need to make potential adjustments to status and percentage if a specific battery chemistry has been selected
-                battery_chemistry = CHEMISTRY_OPTION_TO_BATTERY[battery_option]
-                battery_detail = BATTERIES[battery_chemistry]
-            
-                percentage = self._adjust_percentage(percentage, battery_detail, voltage)
+                if battery_option != "Custom":
+                    battery_chemistry = CHEMISTRY_OPTION_TO_BATTERY[battery_option]
+                    battery_detail = BATTERIES[battery_chemistry]
+                    custom = False
+                else:
+                    battery_detail = BATTERIES["custom"]
+                    battery_detail.battery_chemistry = self._options.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY)
+                    battery_detail.volts_to_percent = self._options.get(CONF_CUSTOM_NUMPY_VOLTS, DEFAULT_CUSTOM_NUMPY_VOLTS)
+                    battery_detail.critical_voltage = self._options.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE)
+                    battery_detail.low_voltage = self._options.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE)
+                    battery_detail.floating_voltage = self._options.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE)
+                    battery_detail.charging_voltage = self._options.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE)
+                    custom = True
+
+                percentage = self._adjust_percentage(percentage, battery_detail, voltage, custom)
                 status = self._adjust_status(status, battery_detail, voltage)
+
                 _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
             
             # Convert status into something human_readable
             status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
-
-            _LOGGER.debug("Updating sensors")
+            
             self.update_sensor(
                 key = str(BMxSensor.BATTERY_PERCENT),
                 native_unit_of_measurement = PERCENTAGE,
@@ -288,14 +326,11 @@ class BMxBluetoothDeviceData(BluetoothData):
             # Update internal charging flag
             if status >= 4: #charging or floating, ie attached to a powered-on charger
                 self._charging = True
+                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
             else:
                 self._charging = False
-
-            _LOGGER.debug("Setting self._charging = %s", str(self._charging))
-
-        else
-            _LOGGER.warn("Timeout attempting to read characteristic %s", self._model_info.characteristic)
-
+                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
+            
     def notification_handler(self, sender, data):
         """Simple bluetooth notification handler"""
         self._gattdata = data
@@ -318,14 +353,17 @@ class BMxBluetoothDeviceData(BluetoothData):
             _LOGGER.debug("Disconnected from active bluetooth client")
         return self._finish_update()
 
-    def _adjust_percentage(self, raw_percentage: int, battery_detail, voltage: float) -> int:
+    def _adjust_percentage(self, raw_percentage: int, battery_detail, voltage: float, custom: bool = False) -> int:
         """ Use battery_detail to determine if we need to adjust the percentage based on voltage
             BM2's default percentage and status values are extremely optimistic! """
 
         # Using numpy for voltage/percentage calculation interpolation
-        np_percent = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-        np_voltage = battery_detail.volts_to_percent
+        if not custom:
+            np_percent = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        else:
+            np_percent = [0, 20, 50, 100]
 
+        np_voltage = battery_detail.volts_to_percent
         new_percentage = int(np.interp(voltage, np_voltage, np_percent))
         _LOGGER.debug ("Adjusting percentage based on battery chemistry of %s: actual voltage = %s, raw percentage = %s, updated percentage = %s", battery_detail.battery_chemistry, str(voltage), str(raw_percentage), str(new_percentage))
 
