@@ -32,6 +32,19 @@
                     "scan_interval": "Sensor update rate limit (seconds)",
                     "battery_type": "Battery chemistry"
                 }
+            },
+            "custom_battery_details": {
+                "title": "Custom battery values",
+                "description": "Provide the appropriate voltage thresholds for your battery so its state can be monitored correctly.  The overall percentage status will be determined from the 0%, 20%, 50% and 100% figures provided, with interpolation as required.",   
+                "data": {
+                    "custom_battery_chemistry": "Battery name, type or chemistry",
+                    "custom_critical_voltage": "Critical voltage threshold (0% remaining)",
+                    "custom_low_voltage": "Low voltage threshold (20% remaining)",
+                    "custom_fifty_percent_voltage": "50% remaining voltage",
+                    "custom_hundred_percent_voltage": "100% remaining voltage (while not being charged)",
+                    "custom_floating_voltage": "Floating voltage",
+                    "custom_charging_voltage": "Charging voltage"
+                }
             }
         }
     }
