@@ -125,14 +125,6 @@ class BMxBluetoothSensorEntity(
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available.
-
-        The sensor is only created when the device is seen.
-
-        Since these are sleepy devices which stop broadcasting
-        when not in use, we can't rely on the last update time
-        so once we have seen the device we always return True.
-        """
         return True
 
     @property
@@ -141,13 +133,12 @@ class BMxBluetoothSensorEntity(
         return not self.processor.available
 
 #   @property
-#    def extra_state_attributes(self):
-#        """Return the extra state attributes."""
-#        # Add any additional attributes you want on your sensor.
-#        attrs = {}
-#        attrs["battery_type"] = self.coordinator.battery_type
-#        return attrs
-#
+#     def extra_state_attributes(self):
+#         """Return the extra state attributes."""
+#         attrs = {}
+#         attrs["battery_type"] = self.coordinator.battery_type
+#         return attrs
+
     @property
     def icon(self) -> str:
 
