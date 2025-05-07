@@ -220,7 +220,7 @@ class BMxBluetoothDeviceData(BluetoothData):
         if last_poll is None:
             return True
 
-        scan_mode = self._options.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE)
+        scan_mode = self._entrydata.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE)
         _LOGGER.debug("Inside 'poll_needed', scan_mode = %s", scan_mode)
 
         if scan_mode == "Never rate limit sensor updates":
@@ -230,7 +230,7 @@ class BMxBluetoothDeviceData(BluetoothData):
             _LOGGER.debug("Sensor updates not rate-limited during charging, returning poll_needed == True")
             return True
     
-        update_interval = self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        update_interval = self._entrydata.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
 
         pollneeded = last_poll > update_interval
@@ -275,7 +275,7 @@ class BMxBluetoothDeviceData(BluetoothData):
                 Seems a bit inefficient, in the future I'll probably change this to only capture it once at
                 startup, and if the options change """
 
-            battery_option = self._options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE)
+            battery_option = self._entrydata.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE)
             
             if battery_option != "Automatic (via BM2)":
                 # We only need to make potential adjustments to status and percentage if a specific battery chemistry has been selected
@@ -285,13 +285,14 @@ class BMxBluetoothDeviceData(BluetoothData):
                     custom = False
                 else:
                     battery_detail = BATTERIES["custom"]
-                    battery_detail.battery_chemistry = self._options.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY)
-                    battery_detail.volts_to_percent = self._options.get(CONF_CUSTOM_NUMPY_VOLTS, DEFAULT_CUSTOM_NUMPY_VOLTS)
-                    battery_detail.critical_voltage = self._options.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE)
-                    battery_detail.low_voltage = self._options.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE)
-                    battery_detail.floating_voltage = self._options.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE)
-                    battery_detail.charging_voltage = self._options.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE)
+                    battery_detail.battery_chemistry = self._entrydata.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY)
+                    battery_detail.volts_to_percent = self._entrydata.get(CONF_CUSTOM_NUMPY_VOLTS, DEFAULT_CUSTOM_NUMPY_VOLTS)
+                    battery_detail.critical_voltage = self._entrydata.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE)
+                    battery_detail.low_voltage = self._entrydata.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE)
+                    battery_detail.floating_voltage = self._entrydata.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE)
+                    battery_detail.charging_voltage = self._entrydata.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE)
                     custom = True
+                    _LOGGER.error ("Using custom battery values: " + str(battery_detail))
 
                 percentage = self._adjust_percentage(percentage, battery_detail, voltage, custom)
                 status = self._adjust_status(status, battery_detail, voltage)
