@@ -75,7 +75,6 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         device = DeviceData()
         
         if not discovery_info.name in BM_NAMES:
-            _LOGGER.error("BM2 - device not supported - " + str(discovery_info.address))
             return self.async_abort(reason="not_supported")
 
         self._discovery_info = discovery_info
@@ -93,28 +92,34 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         discovery_info = self._discovery_info
         title = "BM2 battery monitor (" + short_address(discovery_info.address) + ")"
         
-        # In this scenario (an auto-discovered device) there aren't any questions to ask, so ideally just go ahead and add it
-        # When I went straight into async_create_entry though, for some reason it broke device removal!  So we get an informational 'OK to add' confirmation
         if user_input is not None:
-            return self.async_create_entry(title=title, data={})
+            return self.async_create_entry(title=title, data=user_input)
 
         self._set_confirm_only()
         placeholders = {"name": title}
         self.context["title_placeholders"] = placeholders
+
+        data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_BATTERY_TYPE, default = DEFAULT_BATTERY_TYPE): vol.In(BATTERY_TYPES)
+                }
+            )
+
         return self.async_show_form(
-            step_id="bluetooth_confirm", description_placeholders=placeholders
+            step_id="bluetooth_confirm", data_schema = data_schema, description_placeholders=placeholders
         )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the user step to pick discovered device."""
+
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(
-                title=self._discovered_devices[address], data={}
+                title=self._discovered_devices[address], data=user_input
             )
 
         current_addresses = self._async_current_ids(include_ignore=False)
@@ -133,7 +138,10 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_devices_found")
 
         data_schema=vol.Schema(
-                {vol.Required(CONF_ADDRESS): vol.In(self._discovered_devices)}
+                {
+                    vol.Required(CONF_ADDRESS): vol.In(self._discovered_devices),
+                    vol.Required(CONF_BATTERY_TYPE, default = DEFAULT_BATTERY_TYPE): vol.In(BATTERY_TYPES)
+                }
             )
 
         return self.async_show_form(
@@ -153,23 +161,25 @@ class BMxOptionsFlow(OptionsFlow):
             if user_input[CONF_BATTERY_TYPE] == "Custom":
                 return await self.async_step_custom_battery_details()
             else:
-                # return self.async_create_entry(title="", data=self.user_input)
-                return self.async_create_entry(title="", data=self.user_input)
+                # We want to save these settings into data, not options, even though this is an OptionsFlow
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=self.user_input, options=self.config_entry.options
+                )
+                return self.async_create_entry(title="", data={})
 
-        # Populate the schema with default values or whatever's been set already
         data_schema = vol.Schema(
             {
                 vol.Required(
                     CONF_SCAN_MODE,
-                    default=self.config_entry.options.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE),
+                    default=self.config_entry.data.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE),
                 ): vol.In(SCAN_MODES),
                 vol.Required(
                     CONF_SCAN_INTERVAL,
-                    default=self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    default=self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): (vol.All(vol.Coerce(int), vol.Clamp(min=MIN_SCAN_INTERVAL))),
                 vol.Required(
                     CONF_BATTERY_TYPE,
-                    default=self.config_entry.options.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE),
+                    default=self.config_entry.data.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE),
                 ): vol.In(BATTERY_TYPES),
             }
         )
@@ -191,38 +201,41 @@ class BMxOptionsFlow(OptionsFlow):
             self.user_input[CONF_CUSTOM_NUMPY_VOLTS] = temp_numpy_volts
             self.user_input[CONF_CUSTOM_NUMPY_PERCENT] = temp_numpy_percent
 
-            return self.async_create_entry(title="", data=self.user_input)
+            # We want to save these settings into data, not options, even though this is an OptionsFlow
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=self.user_input, options=self.config_entry.options
+            )
+            return self.async_create_entry(title="", data={})
 
-        # Populate the schema with default values or whatever's been set already
         data_schema = vol.Schema(
             {
                 vol.Required(
                     CONF_CUSTOM_BATTERY_CHEMISTRY,
-                    default=self.config_entry.options.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY),
+                    default=self.config_entry.data.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY),
                 ): str,
                 vol.Required(
                     CONF_CUSTOM_CRITICAL_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
                 vol.Required(
                     CONF_CUSTOM_LOW_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
                 vol.Required(
                     CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE, DEFAULT_CUSTOM_FIFTY_PERCENT_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_FIFTY_PERCENT_VOLTAGE, DEFAULT_CUSTOM_FIFTY_PERCENT_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
                 vol.Required(
                     CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE, DEFAULT_CUSTOM_HUNDRED_PERCENT_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_HUNDRED_PERCENT_VOLTAGE, DEFAULT_CUSTOM_HUNDRED_PERCENT_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
                 vol.Required(
                     CONF_CUSTOM_FLOATING_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
                 vol.Required(
                     CONF_CUSTOM_CHARGING_VOLTAGE,
-                    default=self.config_entry.options.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE),
+                    default=self.config_entry.data.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE),
                 ): (vol.All(vol.Coerce(float), vol.Clamp(min=9.0, max = 16.0))),
             }
         )
