@@ -30,9 +30,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: BMxConfigEntry) -> bool:
     """Set up BMx BLE device from a config entry."""
     address = entry.unique_id
     assert address is not None
-    data = BMxBluetoothDeviceData()
-    
-    data._options = entry.options
+    device_data = BMxBluetoothDeviceData()
+    device_data._entrydata = entry.data
 
     def _needs_poll(
         service_info: BluetoothServiceInfoBleak, last_poll: float | None
@@ -41,7 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BMxConfigEntry) -> bool:
         # and we actually have a way to connect to the device
         return (
             hass.state is CoreState.running
-            and data.poll_needed(service_info, last_poll)
+            and device_data.poll_needed(service_info, last_poll)
             and bool(
                 async_ble_device_from_address(
                     hass, service_info.device.address, connectable=True
@@ -66,14 +65,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: BMxConfigEntry) -> bool:
             raise RuntimeError(
                 f"No connectable device found for {service_info.device.address}"
             )
-        return await data.async_poll(connectable_device)
+        return await device_data.async_poll(connectable_device)
 
     coordinator = entry.runtime_data = ActiveBluetoothProcessorCoordinator(
         hass,
         _LOGGER,
         address=address,
         mode=BluetoothScanningMode.PASSIVE,
-        update_method=data.update,
+        update_method=device_data.update,
         needs_poll_method=_needs_poll,
         poll_method=_async_poll,
         # We will take advertisements from non-connectable devices
@@ -103,4 +102,3 @@ async def _async_update_listener(hass: HomeAssistant, entry: BMxConfigEntry):
     # Reload the integration when the options change.
     _LOGGER.debug("Options have changed, reloading integration")
     await hass.config_entries.async_reload(entry.entry_id)
-    
