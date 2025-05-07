@@ -2,7 +2,8 @@
     "config": {
         "abort": {
             "already_configured": "The device is already configured.",
-            "reconfig_successful" : "Reconfiguration successful"
+            "reconfig_successful" : "Reconfiguration successful.",
+            "no_devices_found": "No BM2 devices found."
         },
         "error": {
             "cannot_connect": "Failed to make a Bluetooth connection.",
@@ -10,15 +11,19 @@
         },
         "step": {
             "user": {
-                "description": "",
                 "title": "BM2 Battery Monitor",
+                "description": "It is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.",
                 "data": {
-                    "address": "Discovered Bluetooth devices"
+                    "address": "Discovered BM2 devices:",
+                    "battery_type": "Battery chemistry"
                 }
             },
             "bluetooth_confirm": {
-                "description": "Do you want to add `{name}` to Home Assistant?",
-                "title": "BM2 Battery Monitor discovered"
+                "title": "BM2 Battery Monitor discovered",
+                "description": "Do you want to add `{name}` to Home Assistant?\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.\n\nIf you select 'custom' then run the 'Configure' option afterwards to define voltage thresholds.",
+                "data": {
+                    "battery_type": "Battery chemistry"
+                }
             }
         }
     },
@@ -26,7 +31,7 @@
         "step": {
             "init": {
                 "title": "Options",
-                "description": "Sensor updates are only ever done when a Bluetooth advertisement is seen, so the rate limit is a way of throttling updates if the device is sending out a lot of advertisements.\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default is extremely optimistic with regards to percentage and overall state!",   
+                "description": "Sensor updates are only ever done when a Bluetooth advertisement is seen, so the rate limit is a way of throttling updates if the device is sending out a lot of advertisements.\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.\n\nIf you select 'custom' then run the 'Configure' option afterwards to define voltage thresholds.",   
                 "data": {
                     "scan_mode": "Sensor update rate limit:",
                     "scan_interval": "Sensor update rate limit (seconds)",
@@ -35,7 +40,7 @@
             },
             "custom_battery_details": {
                 "title": "Custom battery values",
-                "description": "Provide the appropriate voltage thresholds for your battery so its state can be monitored correctly.  The overall percentage status will be determined from the 0%, 20%, 50% and 100% figures provided, with interpolation as required.",   
+                "description": "Provide the appropriate voltage thresholds for your battery so its state can be monitored correctly.  The overall percentage will be determined from the 0%, 20%, 50% and 100% figures provided, with interpolation as required.",   
                 "data": {
                     "custom_battery_chemistry": "Battery name, type or chemistry",
                     "custom_critical_voltage": "Critical voltage threshold (0% remaining)",
