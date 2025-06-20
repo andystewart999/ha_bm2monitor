@@ -31,7 +31,7 @@
         "step": {
             "init": {
                 "title": "Options",
-                "description": "Sensor updates are only ever done when a Bluetooth advertisement is seen, so the rate limit is a way of throttling updates if the device is sending out a lot of advertisements.\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.\n\nIf you select 'custom' then run the 'Configure' option afterwards to define voltage thresholds.",   
+                "description": "Sensor updates are only ever done when a Bluetooth advertisement is seen, so the rate limit is a way of throttling updates if the device is sending out a lot of advertisements.\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.",   
                 "data": {
                     "scan_mode": "Sensor update rate limit:",
                     "scan_interval": "Sensor update rate limit (seconds)",
