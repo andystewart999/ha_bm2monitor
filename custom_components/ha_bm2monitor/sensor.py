@@ -40,6 +40,7 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         key=BMxSensor.BATTERY_VOLTAGE,
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        suggested_display_precision = 2,
         name="Voltage",
         icon="mdi:current-dc"
     ),
