@@ -1,5 +1,5 @@
 {
-  "name": "BM2 Battery Monitor",
+  "name": "BM2 battery monitor",
   "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2024.12.0"
