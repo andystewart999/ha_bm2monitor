@@ -10,6 +10,9 @@
     },
     {
         "local_name": "ZX-1689"
+    },
+    {
+        "service_uuid": "0000fff0-0000-1000-8000-00805f9b34fb"
     }
   ],
   "codeowners": ["@andystewart999"],
