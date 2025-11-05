@@ -99,6 +99,7 @@ async def async_setup_entry(
     ) -> None:
 
     """Set up the BMx BLE sensors."""
+    _LOGGER.debug(f"Setting up sensors")
     coordinator = entry.runtime_data
     processor = PassiveBluetoothDataProcessor(sensor_update_to_bluetooth_data_update)
     entry.async_on_unload(
@@ -126,19 +127,12 @@ class BMxBluetoothSensorEntity(
 
     @property
     def available(self) -> bool:
-        return True
+        return self.processor.available
 
     @property
     def assumed_state(self) -> bool:
         """Return True if the device is no longer broadcasting."""
         return not self.processor.available
-
-#   @property
-#     def extra_state_attributes(self):
-#         """Return the extra state attributes."""
-#         attrs = {}
-#         attrs["battery_type"] = self.coordinator.battery_type
-#         return attrs
 
     @property
     def icon(self) -> str:

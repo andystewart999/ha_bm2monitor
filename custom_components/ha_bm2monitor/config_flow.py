@@ -131,7 +131,12 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if discovery_info.name in BM_NAMES:
                 self._discovered_devices[address] = (
-                    "BM2 battery monitor (" + short_address(discovery_info.address) + ")"
+                    f"BM2 battery monitor ({short_address(discovery_info.address)})"
+                )
+            else:
+                # Add it anyway in case the monitor hasn't been discovered for some reason
+                self._discovered_devices[address] = (
+                    f"{discovery_info.name} ({discovery_info.address})"
                 )
 
         if not self._discovered_devices:

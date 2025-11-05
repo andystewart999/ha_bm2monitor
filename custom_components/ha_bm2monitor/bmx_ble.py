@@ -49,9 +49,6 @@ from .const import (
     DEFAULT_CUSTOM_NUMPY_PERCENT
 )
 
-
-
-
 import logging
 import time
 from dataclasses import dataclass
@@ -178,24 +175,30 @@ class BMxBluetoothDeviceData(BluetoothData):
         
         # Somewhere to store model info for later use
         self._model_info = None
-    
+
+        # Placeholder until I sort out pre-entry validity checks
+        self._log_warning = True
 
     def _start_update(self, service_info: BluetoothServiceInfo) -> None:
         """ Update from BLE advertisement data, and active connection data
             We actually don't really need to parse the advertisement data itsekf, 
             as the characteristic data we're about to get is a superset of it """
 
-        _LOGGER.debug("New advertisement - %s", str(service_info))
+        _LOGGER.debug(f"New advertisement - {str(service_info)}")
         manufacturer_data = service_info.manufacturer_data
         address = service_info.address
         
         if BMx_MANUFACTURER not in manufacturer_data:   # This is the manufacturer_data key where the current battery percentage is stored (in the last array item), although as stated above we don't really need this data.  It's a useful check though
+            if self._log_warning:
+                self._log_warning = False
+                _LOGGER.warning(f"{service_info.address} is not a BMx Battery Monitor - manufacturer_data '{BMx_MANUFACTURER}' not present in advertisements")
+
             return None
 
         data = manufacturer_data[BMx_MANUFACTURER]
         self.set_device_manufacturer("Shenzhen Leagend Optoelectronics")
 
-        model = Models.BM2   # Placeholder - logic required to distinguish between the BM2 and the BM6
+        model = Models.BM2   # Right now we only support the BM2
         #model = BYTES_TO_MODEL.get(5, Models.BM2)   # Placeholder - logic required to distinguish between the BM2 and the BM6
         model_info = DEVICE_TYPES[model]
         self._model_info = model_info
@@ -212,29 +215,31 @@ class BMxBluetoothDeviceData(BluetoothData):
         device is working and online.
         """
 
-        _LOGGER.debug("Inside 'poll_needed', _ignore_advertisement = %s, _charging = %s, _model_info = %s", str(self._ignore_advertisement), str(self._charging), str(self._model_info))
+        _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address}, _ignore_advertisement = {str(self._ignore_advertisement)}, _charging = {str(self._charging)}, _model_info = {str(self._model_info)}")
 
         if self._ignore_advertisement == True:
+            _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address}, returning 'False' as we're ignoring advertisements right now")
             return False
 
         if last_poll is None:
+            _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address}, returning 'True' as this is the first poll")
             return True
 
         scan_mode = self._entrydata.get(CONF_SCAN_MODE, DEFAULT_SCAN_MODE)
-        _LOGGER.debug("Inside 'poll_needed', scan_mode = %s", scan_mode)
+        _LOGGER.debug("Inside 'poll_needed' for {service_info.address}, scan_mode = %s", scan_mode)
 
         if scan_mode == "Never rate limit sensor updates":
-            _LOGGER.debug("Sensor updates not rate-limited, returning poll_needed == True")
+            _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address} - sensor updates not rate-limited, returning poll_needed == True")
             return True
         elif scan_mode == "Only rate limit when not charging" and self._charging == True:
-            _LOGGER.debug("Sensor updates not rate-limited during charging, returning poll_needed == True")
+            _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address} - sensor updates not rate-limited during charging, returning poll_needed == True")
             return True
     
         update_interval = self._entrydata.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        _LOGGER.debug("Inside 'poll_needed', update_interval = %s", str(update_interval))
+        _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address}, update_interval = {str(update_interval)}, last_poll = {last_poll}")
 
         pollneeded = last_poll > update_interval
-        _LOGGER.debug("Sensor updates rate-limited, returning poll_needed == %s", str(pollneeded))
+        _LOGGER.debug(f"Inside 'poll_needed' for {service_info.address}, sensor updates rate-limited, returning poll_needed == {str(pollneeded)}")
 
         return pollneeded
 
@@ -242,95 +247,96 @@ class BMxBluetoothDeviceData(BluetoothData):
     async def _get_payload(self, client: BleakClientWithServiceCache) -> None:
         """Get the payload from BM2 using its gatt_characteristic."""
 
-        ticks = 0
-        self._gattdata = None
+        if client is not None and self._model_info is not None:
+            ticks = 0
+            self._gattdata = None
+            
+            # While we're waiting for the data to come through, we should stop handling advertisements, as sometimes it takes a few seconds
+            self._ignoreadvertisement = True
+    
+            await client.start_notify(self._model_info.characteristic, self.notification_handler)
+            while (self._gattdata is None) and (ticks < GATT_TIMEOUT * 4):
+                await asyncio.sleep(0.25)
+                ticks += 1
+    
+            await client.stop_notify(self._model_info.characteristic)
+            self._ignore_advertisement = False
+    
+            if self._gattdata is not None:
+                _LOGGER.debug("Successfully read characteristic %s", self._model_info.characteristic)
+    
+                """ We need to decrypt the response """
+                key = bytearray([(b&255) for b in [108,101,97,103,101,110,100,-1,-2,49,56,56,50,52,54,54]])
+                cipher = AES.new(key, AES.MODE_CBC, 16 * b'\0')
+                ble_msg = cipher.decrypt(self._gattdata)
+                raw = binascii.hexlify(ble_msg).decode()
         
-        # While we're waiting for the data to come through, we should stop handling advertisements, as sometimes it takes a few seconds
-        self._ignoreadvertisement = True
-
-        await client.start_notify(self._model_info.characteristic, self.notification_handler)
-        while (self._gattdata is None) and (ticks < GATT_TIMEOUT * 4):
-            await asyncio.sleep(0.25)
-            ticks += 1
-
-        await client.stop_notify(self._model_info.characteristic)
-        self._ignore_advertisement = False
-
-        if self._gattdata is not None:
-            _LOGGER.debug("Successfully read characteristic %s", self._model_info.characteristic)
-
-            """ We need to decrypt the response """
-            key = bytearray([(b&255) for b in [108,101,97,103,101,110,100,-1,-2,49,56,56,50,52,54,54]])
-            cipher = AES.new(key, AES.MODE_CBC, 16 * b'\0')
-            ble_msg = cipher.decrypt(self._gattdata)
-            raw = binascii.hexlify(ble_msg).decode()
+                voltage = int(raw[2:5],16) / 100.0
+                percentage = int(raw[6:8],16)
+                status = int(raw[5:6],16)
+                _LOGGER.debug(f"Raw characteristic data for {client.address} : voltage = {str(voltage)}, percentage = {str(percentage)}, status = {str(status)}")
     
-            voltage = int(raw[2:5],16) / 100.0
-            percentage = int(raw[6:8],16)
-            status = int(raw[5:6],16)
-            _LOGGER.debug("Raw characteristic data: voltage = %s, percentage = %s, status = %s", str(voltage), str(percentage), str(status))
-
-            """ Carry out any adjustments as defined by the battery type
-                In keeping with the oralb-ble implementation, at each poll we're doing a battery type lookup
-                Seems a bit inefficient, in the future I'll probably change this to only capture it once at
-                startup, and if the options change """
-
-            battery_option = self._entrydata.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE)
-            
-            if battery_option != "Automatic (via BM2)":
+                """ Carry out any adjustments as defined by the battery type
+                    In keeping with the oralb-ble implementation, at each poll we're doing a battery type lookup
+                    Seems a bit inefficient, in the future I'll probably change this to only capture it once at
+                    startup, and if the options change """
+    
+                battery_option = self._entrydata.get(CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE)
+                
                 # We only need to make potential adjustments to status and percentage if a specific battery chemistry has been selected
-                if battery_option != "Custom":
-                    battery_chemistry = CHEMISTRY_OPTION_TO_BATTERY[battery_option]
-                    battery_detail = BATTERIES[battery_chemistry]
-                    custom = False
+                if battery_option != "Automatic (via BM2)":
+                    if battery_option != "Custom":
+                        battery_chemistry = CHEMISTRY_OPTION_TO_BATTERY[battery_option]
+                        battery_detail = BATTERIES[battery_chemistry]
+                        custom = False
+                    else:
+                        battery_detail = BATTERIES["custom"]
+                        battery_detail.battery_chemistry = self._entrydata.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY)
+                        battery_detail.volts_to_percent = self._entrydata.get(CONF_CUSTOM_NUMPY_VOLTS, DEFAULT_CUSTOM_NUMPY_VOLTS)
+                        battery_detail.critical_voltage = self._entrydata.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE)
+                        battery_detail.low_voltage = self._entrydata.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE)
+                        battery_detail.floating_voltage = self._entrydata.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE)
+                        battery_detail.charging_voltage = self._entrydata.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE)
+                        custom = True
+                        _LOGGER.error ("Using custom battery values: " + str(battery_detail))
+    
+                    percentage = self._adjust_percentage(percentage, battery_detail, voltage, custom)
+                    status = self._adjust_status(status, battery_detail, voltage)
+    
+                    _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
+                
+                # Convert status into something human_readable
+                status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
+                
+                self.update_sensor(
+                    key = str(BMxSensor.BATTERY_PERCENT),
+                    native_unit_of_measurement = PERCENTAGE,
+                    native_value = percentage,
+                    device_class = SensorDeviceClass.BATTERY
+                )
+        
+                self.update_sensor(
+                    key = str(BMxSensor.BATTERY_VOLTAGE),
+                    native_unit_of_measurement = UnitOfElectricPotential,
+                    native_value = voltage,
+                    device_class = SensorDeviceClass.VOLTAGE
+                )
+        
+                self.update_sensor(
+                    key = str(BMxSensor.BATTERY_STATUS),
+                    native_unit_of_measurement = None,
+                    native_value = status_text,
+                    device_class = None,
+                    #name = "Status"
+                )
+    
+                # Update internal charging flag
+                if status >= 4: #charging or floating, ie attached to a powered-on charger
+                    self._charging = True
+                    _LOGGER.debug("Setting self._charging = %s", str(self._charging))
                 else:
-                    battery_detail = BATTERIES["custom"]
-                    battery_detail.battery_chemistry = self._entrydata.get(CONF_CUSTOM_BATTERY_CHEMISTRY, DEFAULT_CUSTOM_BATTERY_CHEMISTRY)
-                    battery_detail.volts_to_percent = self._entrydata.get(CONF_CUSTOM_NUMPY_VOLTS, DEFAULT_CUSTOM_NUMPY_VOLTS)
-                    battery_detail.critical_voltage = self._entrydata.get(CONF_CUSTOM_CRITICAL_VOLTAGE, DEFAULT_CUSTOM_CRITICAL_VOLTAGE)
-                    battery_detail.low_voltage = self._entrydata.get(CONF_CUSTOM_LOW_VOLTAGE, DEFAULT_CUSTOM_LOW_VOLTAGE)
-                    battery_detail.floating_voltage = self._entrydata.get(CONF_CUSTOM_FLOATING_VOLTAGE, DEFAULT_CUSTOM_FLOATING_VOLTAGE)
-                    battery_detail.charging_voltage = self._entrydata.get(CONF_CUSTOM_CHARGING_VOLTAGE, DEFAULT_CUSTOM_CHARGING_VOLTAGE)
-                    custom = True
-                    _LOGGER.error ("Using custom battery values: " + str(battery_detail))
-
-                percentage = self._adjust_percentage(percentage, battery_detail, voltage, custom)
-                status = self._adjust_status(status, battery_detail, voltage)
-
-                _LOGGER.debug("Adjusted characteristic data: percentage = %s, status = %s", str(percentage), str(status))
-            
-            # Convert status into something human_readable
-            status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
-            
-            self.update_sensor(
-                key = str(BMxSensor.BATTERY_PERCENT),
-                native_unit_of_measurement = PERCENTAGE,
-                native_value = percentage,
-                device_class = SensorDeviceClass.BATTERY
-            )
-    
-            self.update_sensor(
-                key = str(BMxSensor.BATTERY_VOLTAGE),
-                native_unit_of_measurement = UnitOfElectricPotential,
-                native_value = voltage,
-                device_class = SensorDeviceClass.VOLTAGE
-            )
-    
-            self.update_sensor(
-                key = str(BMxSensor.BATTERY_STATUS),
-                native_unit_of_measurement = None,
-                native_value = status_text,
-                device_class = None,
-                #name = "Status"
-            )
-
-            # Update internal charging flag
-            if status >= 4: #charging or floating, ie attached to a powered-on charger
-                self._charging = True
-                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
-            else:
-                self._charging = False
-                _LOGGER.debug("Setting self._charging = %s", str(self._charging))
+                    self._charging = False
+                    _LOGGER.debug("Setting self._charging = %s", str(self._charging))
             
     def notification_handler(self, sender, data):
         """Simple bluetooth notification handler"""
@@ -340,19 +346,27 @@ class BMxBluetoothDeviceData(BluetoothData):
         """
         Poll the device to retrieve percentage, status and voltage
         """
-        _LOGGER.debug("Connecting to BM2 device: %s", ble_device.address)
-        client = await establish_connection(
-            BleakClientWithServiceCache, ble_device, ble_device.address
-        )
-
         try:
-            await self._get_payload(client)
-        except BleakError as err:
-            _LOGGER.warning(f"Reading gatt characters failed with err: {err}")
-        finally:
-            await client.disconnect()
-            _LOGGER.debug("Disconnected from active bluetooth client")
-        return self._finish_update()
+            _LOGGER.debug(f"Connecting to Bluetooth device {ble_device.address}")
+            client = await establish_connection(
+                BleakClientWithServiceCache, ble_device, ble_device.address
+            )
+        except Exception as ex:
+            _LOGGER.debug(f"Error {ex} connecting to Bluetooth device {ble_device.address}.  client = {client}")
+
+        if not client is None:
+            _LOGGER.debug(f"Connected to BM2 device {ble_device.address} - client = {client}")
+    
+            try:
+                _LOGGER.debug(f"Waiting for _get_payload to complete for device {ble_device.address}")
+                await self._get_payload(client)
+            except BleakError as err:
+                _LOGGER.warning(f"Reading gatt characters failed with error {err}")
+            finally:
+                await client.disconnect()
+                _LOGGER.debug("Disconnected from active bluetooth client")
+            return self._finish_update()
+
 
     def _adjust_percentage(self, raw_percentage: int, battery_detail, voltage: float, custom: bool = False) -> int:
         """ Use battery_detail to determine if we need to adjust the percentage based on voltage

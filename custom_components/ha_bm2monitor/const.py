@@ -7,7 +7,7 @@ DEFAULT_BATTERY_TYPE = "Automatic (via BM2)"
 DEFAULT_SCAN_INTERVAL = 60
 MIN_SCAN_INTERVAL = 30
 CONF_SCAN_MODE = "scan_mode"
-DEFAULT_SCAN_MODE = "Always rate limit sensor updates"
+DEFAULT_SCAN_MODE = "Never rate limit sensor updates"
 
 CONF_CUSTOM_BATTERY_CHEMISTRY = "custom_battery_chemistry"
 DEFAULT_CUSTOM_BATTERY_CHEMISTRY = "Custom battery"
@@ -38,7 +38,7 @@ BM_NAMES = [
 
 
 SCAN_MODES = [
-    "Always rate limit sensor updates",
+#    "Always rate limit sensor updates",
     "Never rate limit sensor updates",
     "Only rate limit when not charging"
 ]

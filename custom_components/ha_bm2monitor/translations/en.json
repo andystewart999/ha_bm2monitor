@@ -12,7 +12,7 @@
         "step": {
             "user": {
                 "title": "BM2 Battery Monitor",
-                "description": "It is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.",
+                "description": "If for some reason your Battery Monitor hasn't been auto-detected you can add it manually from the list below.\n\nNote that sensors are created once the next Bluetooth advertisement is seen - if no sensors are created after a while check the log for any reported issues.",
                 "data": {
                     "address": "Discovered BM2 devices:",
                     "battery_type": "Battery chemistry"
@@ -20,7 +20,7 @@
             },
             "bluetooth_confirm": {
                 "title": "BM2 Battery Monitor discovered",
-                "description": "Do you want to add `{name}` to Home Assistant?\n\nIt is recommended to select the appropriate battery chemistry as the BM2 by default has some strange definitions of overall status.\n\nIf you select 'custom' then run the 'Configure' option afterwards to define voltage thresholds.",
+                "description": "Do you want to add `{name}` to Home Assistant?\n\nNote that sensors are created once the next Bluetooth advertisement is seen.",
                 "data": {
                     "battery_type": "Battery chemistry"
                 }
