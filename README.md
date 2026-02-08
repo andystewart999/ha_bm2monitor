@@ -1,4 +1,12 @@
 # BM2 Battery Monitor
+[![Last release version](https://img.shields.io/github/v/release/andystewart999/ha_bm2monitor)](https://github.com/andystewart999/ha_bm2monitor/releases)
+[![Last release date](https://img.shields.io/github/release-date/andystewart999/ha_bm2monitor)](https://github.com/andystewart999/ha_bm2monitor/releases)
+[![Contributors](https://img.shields.io/github/contributors/andystewart999/ha_bm2monitor)](https://github.com/andystewart999/ha_bm2monitor/graphs/contributors)
+[![Project license](https://img.shields.io/github/license/andystewart999/ha_bm2monitor)](https://github.com/andystewart999/ha_bm2monitor/blob/master/LICENSE)
+![hacs](https://img.shields.io/badge/hacs-standard_installation-darkorange.svg)
+![type](https://img.shields.io/badge/type-custom_component-forestgreen.svg)
+
+
 A custom integration to monitor the BM2 battery monitor via Bluetooth.
 
 It discovers BM2 battery monitor devices and creates sensors based on battery voltage, percentage and general state via explicit connection rather than BLE broadcast, which is what most other BM2-supporting integrations do.  BLE broadcasts only contain the percentage unfortunately.
