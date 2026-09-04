@@ -3,22 +3,51 @@
   "name": "BM2 battery monitor",
   "bluetooth": [
     {
-        "local_name": "Battery Monitor"
+      "local_name": "Battery Monitor"
     },
     {
-        "local_name": "Li Battery Monitor"
+      "local_name": "Li Battery Monitor"
     },
     {
-        "local_name": "ZX-1689"
+      "local_name": "ZX-1689"
+    },
+    {
+      "manufacturer_id": 76,
+      "manufacturer_data_start": [
+        2,
+        21,
+        101,
+        95,
+        131,
+        202,
+        174,
+        22,
+        161,
+        10,
+        112,
+        46,
+        49,
+        243,
+        13,
+        88,
+        221,
+        130
+      ]
     }
   ],
-  "codeowners": ["@andystewart999"],
+  "codeowners": [
+    "@andystewart999"
+  ],
   "config_flow": true,
-  "dependencies": ["bluetooth_adapters"],
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
   "documentation": "https://github.com/andystewart999/ha_bm2monitor",
   "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/andystewart999/ha_bm2monitor/issues",
-  "requirements": ["numpy"],
-  "version": "1.3.5"
+  "requirements": [
+    "numpy"
+  ],
+  "version": "1.4.1"
 }
