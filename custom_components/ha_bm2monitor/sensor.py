@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from .bmx_ble import BMxSensor, SensorUpdate
+import logging
 
 from homeassistant.components.bluetooth.passive_update_processor import (
     PassiveBluetoothDataProcessor,
     PassiveBluetoothDataUpdate,
     PassiveBluetoothProcessorEntity,
-    PassiveBluetoothEntityKey
 )
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -21,18 +19,17 @@ from homeassistant.const import (
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
-    UnitOfTime,
-    UnitOfElectricPotential
+    UnitOfElectricPotential,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.sensor import sensor_device_info_to_hass_device_info
 
 from . import BMxConfigEntry
-from .device import device_key_to_bluetooth_entity_key
+from .bmx_ble import BMxSensor, SensorUpdate
 from .const import BATTERY_STATUS_ICON
+from .device import device_key_to_bluetooth_entity_key
 
-import logging
 _LOGGER = logging.getLogger(__name__)
 
 SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
@@ -40,21 +37,21 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         key=BMxSensor.BATTERY_VOLTAGE,
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        suggested_display_precision = 2,
+        suggested_display_precision=2,
         name="Voltage",
-        icon="mdi:current-dc"
+        icon="mdi:current-dc",
     ),
     BMxSensor.BATTERY_STATUS: SensorEntityDescription(
         key=BMxSensor.BATTERY_STATUS,
         translation_key="status",
-        name="Status"
+        name="Status",
     ),
     BMxSensor.BATTERY_PERCENT: SensorEntityDescription(
         key=BMxSensor.BATTERY_PERCENT,
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        name="Percent"
+        name="Percent",
     ),
     BMxSensor.SIGNAL_STRENGTH: SensorEntityDescription(
         key=BMxSensor.SIGNAL_STRENGTH,
@@ -63,15 +60,22 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        name="Signal strength"
+        name="Signal strength",
+    ),
+    # ADVERTISEMENT FALLBACK:
+    # This is an inferred protocol era, not an exact firmware revision.
+    BMxSensor.BM2_GENERATION: SensorEntityDescription(
+        key=BMxSensor.BM2_GENERATION,
+        name="BM2 generation",
+        icon="mdi:timeline-clock-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
 
 
 def sensor_update_to_bluetooth_data_update(
     sensor_update: SensorUpdate,
-    ) -> PassiveBluetoothDataUpdate:
-
+) -> PassiveBluetoothDataUpdate:
     """Convert a sensor update to a bluetooth data update."""
     return PassiveBluetoothDataUpdate(
         devices={
@@ -96,19 +100,23 @@ async def async_setup_entry(
     hass: HomeAssistant,
     entry: BMxConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    ) -> None:
-
+) -> None:
     """Set up the BMx BLE sensors."""
-    _LOGGER.debug(f"Setting up sensors")
+    _LOGGER.debug("Setting up sensors")
     coordinator = entry.runtime_data
     processor = PassiveBluetoothDataProcessor(sensor_update_to_bluetooth_data_update)
+
     entry.async_on_unload(
         processor.async_add_entities_listener(
-            BMxBluetoothSensorEntity, async_add_entities
+            BMxBluetoothSensorEntity,
+            async_add_entities,
         )
     )
     entry.async_on_unload(
-        coordinator.async_register_processor(processor, SensorEntityDescription)
+        coordinator.async_register_processor(
+            processor,
+            SensorEntityDescription,
+        )
     )
 
 
@@ -117,8 +125,8 @@ class BMxBluetoothSensorEntity(
         PassiveBluetoothDataProcessor[str | int | None, SensorUpdate]
     ],
     SensorEntity,
-    ):
-    """Representation of a BMX BLE sensor."""
+):
+    """Representation of a BMx BLE sensor."""
 
     @property
     def native_value(self) -> str | int | None:
@@ -127,6 +135,7 @@ class BMxBluetoothSensorEntity(
 
     @property
     def available(self) -> bool:
+        """Return whether the processor is available."""
         return self.processor.available
 
     @property
@@ -135,10 +144,15 @@ class BMxBluetoothSensorEntity(
         return not self.processor.available
 
     @property
-    def icon(self) -> str:
+    def icon(self) -> str | None:
+        """Return dynamic icons for selected entities."""
+        if self.entity_key.key == BMxSensor.BATTERY_STATUS:
+            return BATTERY_STATUS_ICON.get(
+                self.processor.entity_data.get(self.entity_key),
+                "mdi:battery-off",
+            )
 
-        """Return icon only for the status and volts entities."""
-        if self.entity_key.key == "battery_status":
-            return BATTERY_STATUS_ICON.get(self.processor.entity_data.get(self.entity_key), "mdi:battery-off")
-        elif self.entity_key.key == "battery_voltage":
+        if self.entity_key.key == BMxSensor.BATTERY_VOLTAGE:
             return "mdi:current-dc"
+
+        return self.entity_description.icon
