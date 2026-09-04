@@ -30,17 +30,13 @@ DEFAULT_CUSTOM_NUMPY_PERCENT = [0, 20, 50, 100]
 
 GATT_TIMEOUT = 20
 
-BM_NAMES = [
-    "Battery Monitor",
-    "Li Battery Monitor",
-    "ZX-1689"
-]
+BM_NAMES = ["Battery Monitor", "Li Battery Monitor", "ZX-1689"]
 
 
 SCAN_MODES = [
-#    "Always rate limit sensor updates",
+    #    "Always rate limit sensor updates",
     "Never rate limit sensor updates",
-    "Only rate limit when not charging"
+    "Only rate limit when not charging",
 ]
 
 
@@ -52,7 +48,7 @@ BATTERY_TYPES = [
     "LiFePO4",
     "iTechworld 120X (LiFePO4)",
     "Lithium-ion",
-    "Custom"
+    "Custom",
 ]
 
 BATTERY_STATUS_LIST = {
@@ -60,13 +56,13 @@ BATTERY_STATUS_LIST = {
     1: "Low",
     2: "Normal",
     4: "Charging",
-    8: "Floating"
+    8: "Floating",
 }
 
 BATTERY_STATUS_ICON = {
-    "Critical" : "mdi:battery-remove-outline",
-    "Low" : "mdi:battery-arrow-down-outline",
-    "Normal" : "mdi:battery-check",
-    "Floating" : "mdi:battery-sync",
-    "Charging" : "mdi:battery-charging-100"
+    "Critical": "mdi:battery-remove-outline",
+    "Low": "mdi:battery-arrow-down-outline",
+    "Normal": "mdi:battery-check",
+    "Floating": "mdi:battery-sync",
+    "Charging": "mdi:battery-charging-100",
 }
