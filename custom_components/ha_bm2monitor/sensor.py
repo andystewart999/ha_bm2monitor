@@ -103,7 +103,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the BMx BLE sensors."""
     _LOGGER.debug("Setting up sensors")
-    coordinator = entry.runtime_data
+    coordinator = entry.runtime_data.coordinator
     processor = PassiveBluetoothDataProcessor(sensor_update_to_bluetooth_data_update)
 
     entry.async_on_unload(

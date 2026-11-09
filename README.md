@@ -9,7 +9,17 @@
 
 A custom integration to monitor the BM2 battery monitor via Bluetooth.
 
-It discovers BM2 battery monitor devices and creates sensors based on battery voltage, percentage and general state via explicit connection rather than BLE broadcast, which is what most other BM2-supporting integrations do.  BLE broadcasts only contain the percentage unfortunately.
+It discovers BM2 battery monitor devices and creates sensors for battery voltage, percentage and general state.  Sensors are updated from the BM2's Bluetooth advertisements, and a connection is only made when the advertisements don't contain everything needed.
+
+If Home Assistant can hear the BM2 but can't connect to it (for example it's only in range of a Bluetooth proxy that can't make connections), the integration shows whatever the advertisements contain:
+
+| BM2 firmware | Battery chemistry | Sensors available without a connection |
+|---|---|---|
+| v9 or later | any except Automatic | Voltage, Percent, Status |
+| v9 or later | Automatic | Voltage, Percent |
+| Older than v9 | any | Percent (the BM2's own figure) |
+
+On older firmware without a connection, the chosen battery chemistry has no effect; the integration warns about this during setup and raises a repair issue if it persists.
 
 There is an option to explicitily define the battery chemistry type which affects the percentage and status calculations.  A number of sources have been used in the volts-to-percentage mapping function, which uses Numpy for interpolating the voltage vs percentage details.
   
