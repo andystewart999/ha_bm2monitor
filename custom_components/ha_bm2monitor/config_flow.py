@@ -98,6 +98,49 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, DiscoveredDevice] = {}
+        self._generation = BM2Generation.UNKNOWN
+        self._connectable = False
+        self._pending_entry: tuple[str, dict[str, Any]] | None = None
+
+    def _chemistry_has_no_effect(self, battery_type: str) -> bool:
+        """Return True if a chosen chemistry won't change any sensor value.
+
+        A Legacy BM2 only advertises its own percentage; voltage (which every
+        chemistry calculation needs) requires a connection.
+        """
+        return (
+            self._generation is BM2Generation.LEGACY
+            and not self._connectable
+            and battery_type != DEFAULT_BATTERY_TYPE
+        )
+
+    async def _async_create_or_warn(
+        self, title: str, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Create the entry, first warning if the chemistry will do nothing."""
+        if self._chemistry_has_no_effect(data[CONF_BATTERY_TYPE]):
+            self._pending_entry = (title, data)
+            return await self.async_step_advert_only()
+        return self.async_create_entry(title=title, data=data)
+
+    async def async_step_advert_only(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Warn that the chosen chemistry can't take effect."""
+        assert self._pending_entry is not None
+        title, data = self._pending_entry
+
+        if user_input is not None:
+            return self.async_create_entry(title=title, data=data)
+
+        return self.async_show_form(
+            step_id="advert_only",
+            description_placeholders={
+                "name": title,
+                "battery_type": data[CONF_BATTERY_TYPE],
+            },
+        )
 
     @staticmethod
     def _bm2_title(address: str) -> str:
@@ -138,6 +181,24 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         address = discovery_info.address
         device = DeviceData()
+
+        self._connectable = (
+            discovery_info.connectable
+            or async_ble_device_from_address(self.hass, address, connectable=True)
+            is not None
+        )
+
+        validation = await self._async_validate_device_inner(device, discovery_info)
+        self._generation = device.bm2_generation
+        return validation
+
+    async def _async_validate_device_inner(
+        self,
+        device: DeviceData,
+        discovery_info: BluetoothServiceInfoBleak,
+    ) -> str:
+        """Validate a device, see _async_validate_device."""
+        address = discovery_info.address
 
         # First choice: protocol-specific passive validation.  This works even
         # where advertisements are receivable but a GATT connection is not.
@@ -238,7 +299,7 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
         title = self._bm2_title(self._discovery_info.address)
 
         if user_input is not None:
-            return self.async_create_entry(title=title, data=user_input)
+            return await self._async_create_or_warn(title, user_input)
 
         self._set_confirm_only()
 
@@ -331,9 +392,9 @@ class BMxConfigFlow(ConfigFlow, domain=DOMAIN):
                         if key != CONF_ADDRESS
                     }
 
-                    return self.async_create_entry(
-                        title=self._bm2_title(address),
-                        data=entry_data,
+                    return await self._async_create_or_warn(
+                        self._bm2_title(address),
+                        entry_data,
                     )
 
                 if validation == "not_bm2":
@@ -389,17 +450,58 @@ class BMxOptionsFlow(OptionsFlow):
         if user_input is not None:
             self.user_input = user_input
 
-            if user_input[CONF_BATTERY_TYPE] == "Custom":
-                return await self.async_step_custom_battery_details()
+            if self._chemistry_has_no_effect(user_input[CONF_BATTERY_TYPE]):
+                return await self.async_step_advert_only()
 
-            # Deliberately save these settings into data, not options, to
-            # preserve the existing integration behaviour.
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=self.user_input,
-                options=self.config_entry.options,
-            )
-            return self.async_create_entry(title="", data={})
+            return await self._async_continue()
+
+        return self._show_init_form()
+
+    def _chemistry_has_no_effect(self, battery_type: str) -> bool:
+        """Return True if the device is currently Legacy and advertisement-only."""
+        if battery_type == DEFAULT_BATTERY_TYPE:
+            return False
+        runtime_data = getattr(self.config_entry, "runtime_data", None)
+        device_data = getattr(runtime_data, "device_data", None)
+        if device_data is None:
+            return False
+        return (
+            device_data.bm2_generation is BM2Generation.LEGACY
+            and not device_data.active_reads_working
+        )
+
+    async def async_step_advert_only(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Warn that the chosen chemistry can't currently take effect."""
+        if user_input is not None:
+            return await self._async_continue()
+
+        return self.async_show_form(
+            step_id="advert_only",
+            description_placeholders={
+                "name": self.config_entry.title,
+                "battery_type": self.user_input[CONF_BATTERY_TYPE],
+            },
+        )
+
+    async def _async_continue(self) -> ConfigFlowResult:
+        """Save page 1, or move on to the custom battery page."""
+        if self.user_input[CONF_BATTERY_TYPE] == "Custom":
+            return await self.async_step_custom_battery_details()
+
+        # Deliberately save these settings into data, not options, to
+        # preserve the existing integration behaviour.
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data=self.user_input,
+            options=self.config_entry.options,
+        )
+        return self.async_create_entry(title="", data={})
+
+    def _show_init_form(self) -> ConfigFlowResult:
+        """Show options page 1."""
 
         data_schema = vol.Schema(
             {

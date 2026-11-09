@@ -1,19 +1,26 @@
 """Parser and active BLE reader for BMx battery monitors.
 
-The integration continues to prefer an active GATT read.  On BM2 firmware that
-broadcasts the newer encrypted 16-byte telemetry packet, the latest
-advertisement is decoded and cached so that it can be used if the active read
-fails.
+Every BM2 advertisement is decoded and published as it arrives.  An active GATT
+read is only attempted when the advertisement is missing something we need
+AND Home Assistant currently has a connectable Bluetooth path to the device.
 
-Changes for advertisement fallback are marked with:
-    # ADVERTISEMENT FALLBACK:
+What the advertisements carry, and therefore what is available when no
+connection can be made (for example a passive-only Bluetooth proxy):
+
+    Enhanced (v9+) firmware, chosen chemistry:  voltage, percentage, status
+    Enhanced (v9+) firmware, automatic:          voltage, percentage
+    Legacy (pre-v9) firmware, any chemistry:     percentage (the BM2's own)
+
+Enhanced + chosen chemistry never needs a connection: percentage and status
+are both derived from the advertised voltage.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from enum import Enum, auto
 
 import numpy as np
@@ -84,6 +91,12 @@ BM2_MIN_VALID_VOLTAGE = 5.0
 BM2_MAX_VALID_VOLTAGE = 20.0
 BM2_MIN_VALID_PERCENTAGE = 0
 BM2_MAX_VALID_PERCENTAGE = 100
+
+# How long after last seeing a connectable path (or after the last of several
+# consecutive failed active reads) the device is treated as advertisement-only.
+# Also the back-off before active reads are retried after repeated failures.
+ACTIVE_PATH_GRACE = 600
+MAX_ACTIVE_FAILURES = 3
 
 
 class BMxSensor(StrEnum):
@@ -218,9 +231,10 @@ CHEMISTRY_OPTION_TO_BATTERY = {
     "AGM": Battery.agm,
     "Deep-cycle": Battery.deepcycle,
     "Lead-acid": Battery.leadacid,
-    "LifePO4": Battery.lifepo4,
+    # Keys must match const.BATTERY_TYPES exactly.
+    "LiFePO4": Battery.lifepo4,
     "Lithium-ion": Battery.lithiumion,
-    "itech120x": Battery.itech120x,
+    "iTechworld 120X (LiFePO4)": Battery.itech120x,
     "Custom": Battery.custom,
 }
 
@@ -260,35 +274,129 @@ class BMxBluetoothDeviceData(BluetoothData):
         # Populated by __init__.py immediately after construction.
         self._entrydata: dict = {}
 
-        # ADVERTISEMENT FALLBACK:
-        # The latest successfully decoded passive reading is cached but NOT
-        # published from _start_update().  This preserves active-GATT-first
-        # behaviour.
-        self._advertisement_reading: BMxReading | None = None
-
-        # ADVERTISEMENT FALLBACK:
         # General protocol era inferred from the advertisement format.  This is
         # intentionally not presented as an exact firmware version.
         self._bm2_generation = BM2Generation.UNKNOWN
+
+        # Connectable-path / active-read health, used to decide whether the
+        # device is currently "advertisement-only".  Times are monotonic.
+        self._started = time.monotonic()
+        self._last_connectable_seen: float | None = None
+        self._active_failures = 0
+        self._last_active_failure: float | None = None
+
+        # Sensor keys that have been published at least once, so values that
+        # can no longer be derived can be cleared rather than left stale.
+        self._published: set[str] = set()
 
     @property
     def bm2_generation(self) -> BM2Generation:
         """Return the inferred general BM2 protocol generation."""
         return self._bm2_generation
 
-    def _start_update(self, service_info: BluetoothServiceInfo) -> None:
-        """Process an advertisement.
+    # ------------------------------------------------------------------
+    # Connectable path / advertisement-only tracking
+    # ------------------------------------------------------------------
 
-        Device metadata is refreshed and, where possible, the newer encrypted
-        BM2 telemetry frame is decoded and cached.  Sensor values are deliberately
-        not published here; the cache is only consumed when the scheduled active
-        poll fails (or no connectable Bluetooth path exists).
+    def note_connectable_path(self, available: bool) -> None:
+        """Record whether HA currently has a connectable path to the device.
+
+        Called by the integration for every advertisement, before update().
         """
+        if available:
+            self._last_connectable_seen = time.monotonic()
+
+    def _connectable_path_recent(self) -> bool:
+        return (
+            self._last_connectable_seen is not None
+            and time.monotonic() - self._last_connectable_seen < ACTIVE_PATH_GRACE
+        )
+
+    @property
+    def active_reads_working(self) -> bool:
+        """Return True if active GATT reads are currently expected to work.
+
+        False means the device is being treated as advertisement-only: there
+        has been no connectable path for a while, or active reads keep failing.
+        """
+        return (
+            self._connectable_path_recent()
+            and self._active_failures < MAX_ACTIVE_FAILURES
+        )
+
+    def _active_read_allowed(self) -> bool:
+        """Return True if an active read may be attempted now."""
+        if not self._connectable_path_recent():
+            return False
+        if self._active_failures < MAX_ACTIVE_FAILURES:
+            return True
+        # Repeated failures: back off, then try again occasionally.
+        return (
+            self._last_active_failure is None
+            or time.monotonic() - self._last_active_failure >= ACTIVE_PATH_GRACE
+        )
+
+    def _record_active_success(self) -> None:
+        if self._active_failures >= MAX_ACTIVE_FAILURES:
+            _LOGGER.info("Active reads of BM2 are working again")
+        self._active_failures = 0
+        self._last_active_failure = None
+
+    def record_active_failure(self, err: Exception) -> None:
+        """Record a failed active read."""
+        self._active_failures += 1
+        self._last_active_failure = time.monotonic()
+        if self._active_failures == MAX_ACTIVE_FAILURES:
+            _LOGGER.warning(
+                "Unable to read BM2 over a Bluetooth connection after %s "
+                "attempts (%s); using advertisement data only, retrying every "
+                "%s seconds",
+                MAX_ACTIVE_FAILURES,
+                err,
+                ACTIVE_PATH_GRACE,
+            )
+        else:
+            _LOGGER.debug("Active BM2 read failed: %s", err)
+
+    def _needs_active_data(self) -> bool:
+        """Return True if advertisements alone can't provide every sensor."""
+        if self._bm2_generation is not BM2Generation.ENHANCED:
+            # Unknown: we can't tell yet.  Legacy: no voltage or status.
+            return True
+        battery_detail, _ = self._battery_detail()
+        # Enhanced + automatic: status only comes from the BM2 itself.
+        return battery_detail is None
+
+    @property
+    def chemistry_has_no_effect(self) -> bool:
+        """Return True if the configured chemistry can't affect any sensor.
+
+        This is the case for a Legacy BM2 that has been advertisement-only for
+        a while: the only value available is the BM2's own percentage.
+        """
+        if self._bm2_generation is not BM2Generation.LEGACY:
+            return False
+        battery_detail, _ = self._battery_detail()
+        return (
+            battery_detail is not None
+            and not self.active_reads_working
+            and time.monotonic() - self._started >= ACTIVE_PATH_GRACE
+        )
+
+    def last_update(self) -> SensorUpdate:
+        """Return the current sensor state without processing anything new."""
+        return self._finish_update()
+
+    # ------------------------------------------------------------------
+    # Advertisement handling
+    # ------------------------------------------------------------------
+
+    def _start_update(self, service_info: BluetoothServiceInfo) -> None:
+        """Process an advertisement and publish whatever it carries."""
         _LOGGER.debug("New advertisement - %s", service_info)
 
         address = service_info.address
 
-        # ADVERTISEMENT FALLBACK:
         # Do not require manufacturer ID 0x004C.  That is the Apple iBeacon
         # record and is not the encrypted voltage/SOC telemetry record.
         self.set_device_manufacturer("Shenzhen Leagend Optoelectronics")
@@ -302,64 +410,101 @@ class BMxBluetoothDeviceData(BluetoothData):
         self.set_device_name(name)
         self.set_title(name)
 
-        # ADVERTISEMENT FALLBACK:
         reading = self._decode_advertisement(service_info.manufacturer_data)
-        if reading is not None:
-            # CONFIG FLOW / GENERATION:
-            # Enhanced BM2s can emit BOTH the old iBeacon-style percentage
-            # packet and the newer encrypted voltage+percentage packet.
-            #
-            # Once Enhanced has been positively observed, never downgrade the
-            # device back to Legacy merely because the next advertisement was
-            # the old-format packet.
-            if reading.generation is BM2Generation.ENHANCED:
-                self._bm2_generation = BM2Generation.ENHANCED
-                self._advertisement_reading = reading
+        if reading is None:
+            return
 
-            elif (
-                reading.generation is BM2Generation.LEGACY
-                and self._bm2_generation is BM2Generation.ENHANCED
-                and self._advertisement_reading is not None
+        # Enhanced BM2s can emit BOTH the old iBeacon-style percentage packet
+        # and the newer encrypted voltage+percentage packet.  Once Enhanced
+        # has been positively observed, never downgrade to Legacy.
+        if reading.generation is BM2Generation.ENHANCED:
+            self._bm2_generation = BM2Generation.ENHANCED
+        elif self._bm2_generation is not BM2Generation.ENHANCED:
+            self._bm2_generation = reading.generation
+
+        self._apply_advertisement(reading)
+
+    def _apply_advertisement(self, reading: BMxReading) -> None:
+        """Publish an advertisement reading, filtering what shouldn't be used."""
+        battery_detail, _ = self._battery_detail()
+
+        if reading.voltage is None and battery_detail is not None:
+            # This is a percentage-only packet (Legacy format) but a chemistry
+            # has been chosen, so the percentage should be derived from voltage.
+            # The BM2's own percentage is only used as a stop-gap when no
+            # voltage can be obtained at all, i.e. a Legacy BM2 that is
+            # advertisement-only.  Otherwise it would fight with the
+            # voltage-derived value on every advertisement.
+            if (
+                self._bm2_generation is BM2Generation.ENHANCED
+                or self.active_reads_working
             ):
-                # Preserve the most recently known enhanced voltage while
-                # accepting the fresher percentage from the legacy packet.
-                self._advertisement_reading = BMxReading(
-                    voltage=self._advertisement_reading.voltage,
-                    percentage=reading.percentage,
-                    status=None,
-                    source="advertisement",
-                    generation=BM2Generation.ENHANCED,
+                reading = replace(reading, percentage=None)
+
+        self._apply_reading(reading)
+
+        if not self.active_reads_working:
+            self._clear_underivable(battery_detail is not None)
+
+    def _clear_underivable(self, chemistry_chosen: bool) -> None:
+        """Clear values that advertisements alone can never provide.
+
+        Without this, voltage/status from an earlier active read would be
+        re-published indefinitely while the device is advertisement-only.
+        """
+        enhanced = self._bm2_generation is BM2Generation.ENHANCED
+        underivable: list[str] = []
+        if not enhanced:
+            underivable.append(str(BMxSensor.BATTERY_VOLTAGE))
+        if not (enhanced and chemistry_chosen):
+            underivable.append(str(BMxSensor.BATTERY_STATUS))
+
+        for key in underivable:
+            if key in self._published:
+                self.update_sensor(
+                    key=key,
+                    native_unit_of_measurement=(
+                        UnitOfElectricPotential.VOLT
+                        if key == BMxSensor.BATTERY_VOLTAGE
+                        else None
+                    ),
+                    native_value=None,
+                    device_class=(
+                        SensorDeviceClass.VOLTAGE
+                        if key == BMxSensor.BATTERY_VOLTAGE
+                        else None
+                    ),
                 )
-
-            else:
-                self._bm2_generation = reading.generation
-                self._advertisement_reading = reading
-
-            _LOGGER.debug(
-                "Cached BM2 advertisement reading for %s: generation=%s, "
-                "voltage=%s, percentage=%s",
-                address,
-                self._bm2_generation,
-                self._advertisement_reading.voltage,
-                self._advertisement_reading.percentage,
-            )
+                self._published.discard(key)
+                if key == BMxSensor.BATTERY_STATUS:
+                    self._charging = False
 
     def poll_needed(
         self,
         service_info: BluetoothServiceInfo,
         last_poll: float | None,
     ) -> bool:
-        """Return True when the coordinator should perform its scheduled poll."""
+        """Return True when the coordinator should perform an active read."""
         _LOGGER.debug(
             "Inside 'poll_needed' for %s, _ignore_advertisement=%s, "
-            "_charging=%s, _model_info=%s",
+            "_charging=%s, generation=%s, connectable_recent=%s, failures=%s",
             service_info.address,
             self._ignore_advertisement,
             self._charging,
-            self._model_info,
+            self._bm2_generation,
+            self._connectable_path_recent(),
+            self._active_failures,
         )
 
         if self._ignore_advertisement:
+            return False
+
+        # Nothing to gain from connecting: the advertisement had it all.
+        if not self._needs_active_data():
+            return False
+
+        # No connectable path, or backing off after repeated failures.
+        if not self._active_read_allowed():
             return False
 
         if last_poll is None:
@@ -539,13 +684,11 @@ class BMxBluetoothDeviceData(BluetoothData):
         )
         return battery_detail, True
 
-    # ADVERTISEMENT FALLBACK:
     def _apply_reading(self, reading: BMxReading) -> None:
         """Apply available fields and publish a decoded reading.
 
-        Advertisement fallback can be partial.  Legacy advertisements carry
-        percentage but no voltage/status, so unavailable fields are deliberately
-        left at their previous Home Assistant values.
+        Readings can be partial.  Fields that are None are left at their
+        previous values (see _clear_underivable for when that stops).
         """
         voltage = reading.voltage
         percentage = reading.percentage
@@ -576,6 +719,7 @@ class BMxBluetoothDeviceData(BluetoothData):
                 native_value=percentage,
                 device_class=SensorDeviceClass.BATTERY,
             )
+            self._published.add(str(BMxSensor.BATTERY_PERCENT))
 
         if voltage is not None:
             self.update_sensor(
@@ -584,9 +728,10 @@ class BMxBluetoothDeviceData(BluetoothData):
                 native_value=voltage,
                 device_class=SensorDeviceClass.VOLTAGE,
             )
+            self._published.add(str(BMxSensor.BATTERY_VOLTAGE))
 
-        # Automatic-via-BM2 passive packets do not expose a decoded status.
-        # Leave the previous status intact instead of inventing one.
+        # Automatic-via-BM2 advertisements do not expose a status.  Leave the
+        # previous status intact instead of inventing one.
         if status is not None:
             status_text = BATTERY_STATUS_LIST.get(status, "Unknown")
             self.update_sensor(
@@ -595,10 +740,11 @@ class BMxBluetoothDeviceData(BluetoothData):
                 native_value=status_text,
                 device_class=None,
             )
+            self._published.add(str(BMxSensor.BATTERY_STATUS))
             self._charging = status >= 4
 
         # Generation is inferred from advertisements.  Publish it alongside
-        # either an active or fallback update once it is known.
+        # any update once it is known.
         if self._bm2_generation is not BM2Generation.UNKNOWN:
             self.update_sensor(
                 key=str(BMxSensor.BM2_GENERATION),
@@ -649,10 +795,7 @@ class BMxBluetoothDeviceData(BluetoothData):
                 self._ignore_advertisement = False
 
         if self._gattdata is None:
-            # CHANGED:
-            # The previous implementation silently returned here.  Raising
-            # makes a no-notification timeout a genuine failed active read,
-            # allowing async_poll() to use the cached advertisement.
+            # A no-notification timeout is a genuine failed active read.
             raise BleakError(
                 f"Timed out waiting for BM2 GATT notification from {client.address}"
             )
@@ -736,21 +879,15 @@ class BMxBluetoothDeviceData(BluetoothData):
             if client is not None:
                 await client.disconnect()
 
-    async def async_poll(
-        self,
-        ble_device: BLEDevice | None,
-    ) -> SensorUpdate:
-        """Prefer an active GATT read and fall back to advertisement data.
+    async def async_poll(self, ble_device: BLEDevice) -> SensorUpdate:
+        """Perform an active GATT read and publish the result.
 
-        Passing ble_device=None means Home Assistant heard the device through a
-        passive scanner/proxy but currently has no connectable Bluetooth path.
+        Failures are recorded (see active_reads_working) and re-raised.  The
+        sensors keep whatever the advertisements have provided.
         """
         client: BleakClientWithServiceCache | None = None
 
         try:
-            if ble_device is None:
-                raise BleakError("No connectable Bluetooth path is currently available")
-
             _LOGGER.debug(
                 "Connecting to Bluetooth device %s",
                 ble_device.address,
@@ -768,26 +905,15 @@ class BMxBluetoothDeviceData(BluetoothData):
             )
 
             reading = await self._get_payload(client)
-            self._apply_reading(reading)
-            return self._finish_update()
 
         except Exception as ex:
-            # ADVERTISEMENT FALLBACK:
-            # Active connection/read failed.  If the immediately preceding
-            # advertisement contained usable telemetry, publish it instead.
-            if self._advertisement_reading is not None:
-                address = ble_device.address if ble_device is not None else "unknown"
-                _LOGGER.debug(
-                    "Active BM2 read failed for %s (%s); using cached "
-                    "advertisement data",
-                    address,
-                    ex,
-                )
-                self._apply_reading(self._advertisement_reading)
-                return self._finish_update()
-
-            # No usable passive fallback exists, so preserve the failure.
+            self.record_active_failure(ex)
             raise
+
+        else:
+            self._record_active_success()
+            self._apply_reading(reading)
+            return self._finish_update()
 
         finally:
             if client is not None:
