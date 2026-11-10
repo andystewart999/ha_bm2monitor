@@ -10,9 +10,6 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_ble_device_from_address,
 )
-from homeassistant.components.bluetooth.active_update_processor import (
-    ActiveBluetoothProcessorCoordinator,
-)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CoreState, HomeAssistant
@@ -20,6 +17,7 @@ from homeassistant.helpers import issue_registry as ir
 
 from .bmx_ble import BMxBluetoothDeviceData, SensorUpdate
 from .const import CONF_BATTERY_TYPE, DEFAULT_BATTERY_TYPE, DOMAIN
+from .coordinator import BMxBluetoothCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -32,7 +30,7 @@ ISSUE_CHEMISTRY_NO_EFFECT = "chemistry_has_no_effect"
 class BMxRuntimeData:
     """Runtime data for a BM2 config entry."""
 
-    coordinator: ActiveBluetoothProcessorCoordinator
+    coordinator: BMxBluetoothCoordinator
     device_data: BMxBluetoothDeviceData
 
 
@@ -66,14 +64,15 @@ async def async_setup_entry(
 
     def _update(service_info: BluetoothServiceInfoBleak) -> SensorUpdate:
         """Process an advertisement."""
-        nonlocal issue_raised
-
         device_data.note_connectable_path(
             _connectable_device(service_info) is not None
         )
-        update = device_data.update(service_info)
+        return device_data.update(service_info)
 
-        # Tell the user if their chosen chemistry can't do anything.
+    def _async_check_chemistry_issue() -> None:
+        """Tell the user if their chosen chemistry can't do anything."""
+        nonlocal issue_raised
+
         if device_data.chemistry_has_no_effect != issue_raised:
             issue_raised = not issue_raised
             if issue_raised:
@@ -94,19 +93,26 @@ async def async_setup_entry(
             else:
                 ir.async_delete_issue(hass, DOMAIN, _issue_id(entry))
 
-        return update
-
     def _needs_poll(
         service_info: BluetoothServiceInfoBleak,
         last_poll: float | None,
     ) -> bool:
-        """Return whether this advertisement should trigger an active read."""
+        """Return whether this advertisement should trigger an active read.
+
+        Called for every advertisement, including repeats that Home Assistant
+        doesn't pass to _update, so connectable-path tracking and the repair
+        issue stay current while the advertisement is unchanged.
+        """
+        connectable = _connectable_device(service_info) is not None
+        device_data.note_connectable_path(connectable)
+        _async_check_chemistry_issue()
+
         # device_data only asks for a read when the advertisement is missing
         # something AND a connectable path has recently been seen.
         return (
             hass.state is CoreState.running
+            and connectable
             and device_data.poll_needed(service_info, last_poll)
-            and _connectable_device(service_info) is not None
         )
 
     async def _async_poll(
@@ -127,7 +133,7 @@ async def async_setup_entry(
             # a marginal connection.
             return device_data.last_update()
 
-    coordinator = ActiveBluetoothProcessorCoordinator(
+    coordinator = BMxBluetoothCoordinator(
         hass,
         _LOGGER,
         address=address,
@@ -157,6 +163,8 @@ async def async_unload_entry(
     entry: BMxConfigEntry,
 ) -> bool:
     """Unload a config entry."""
+    # Re-evaluated from scratch on the next setup.
+    ir.async_delete_issue(hass, DOMAIN, _issue_id(entry))
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
