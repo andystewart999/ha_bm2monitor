@@ -87,7 +87,7 @@ BM2_LEGACY_PREFIX = bytes.fromhex("0215655f83caae16a10a702e31f30d58dd82")
 
 # Sanity bounds are intentionally a little wider than the commonly-used
 # 10-15 V range so unusual 12 V battery chemistries/states are not rejected.
-BM2_MIN_VALID_VOLTAGE = 5.0
+BM2_MIN_VALID_VOLTAGE = 6.0
 BM2_MAX_VALID_VOLTAGE = 20.0
 BM2_MIN_VALID_PERCENTAGE = 0
 BM2_MAX_VALID_PERCENTAGE = 100
@@ -410,7 +410,9 @@ class BMxBluetoothDeviceData(BluetoothData):
         self.set_device_name(name)
         self.set_title(name)
 
-        reading = self._decode_advertisement(service_info.manufacturer_data)
+        reading = self._decode_advertisement(
+            self._current_manufacturer_data(service_info)
+        )
         if reading is None:
             return
 
@@ -423,6 +425,54 @@ class BMxBluetoothDeviceData(BluetoothData):
             self._bm2_generation = reading.generation
 
         self._apply_advertisement(reading)
+
+    @classmethod
+    def _current_manufacturer_data(
+        cls, service_info: BluetoothServiceInfo
+    ) -> dict[int, bytes]:
+        """Return only the manufacturer records carried by this advertisement.
+
+        Home Assistant merges manufacturer data from earlier advertisements
+        into service_info.manufacturer_data.  Enhanced BM2s send each reading
+        under a different manufacturer ID, so the merged dict accumulates old
+        readings.  The raw advertisement bytes are the only reliable source.
+        """
+        raw = getattr(service_info, "raw", None)
+        if raw is not None:
+            return cls._raw_manufacturer_data(raw)
+
+        manufacturer_data = service_info.manufacturer_data
+        if len(manufacturer_data) <= 1:
+            return manufacturer_data
+
+        # Without raw bytes the Enhanced records can't be told apart from old
+        # ones.  The Legacy record always uses the same ID, so it is current.
+        return {
+            manufacturer_id: payload
+            for manufacturer_id, payload in manufacturer_data.items()
+            if manufacturer_id == BM2_LEGACY_MANUFACTURER_ID
+        }
+
+    @staticmethod
+    def _raw_manufacturer_data(raw: bytes) -> dict[int, bytes]:
+        """Extract manufacturer records from length-prefixed Bluetooth AD fields."""
+        records: dict[int, bytes] = {}
+        offset = 0
+        while offset < len(raw):
+            length = raw[offset]
+            if length == 0:
+                break
+            end = offset + length + 1
+            if end > len(raw):
+                return {}
+            if raw[offset + 1] == 0xFF and length >= 3:
+                manufacturer_id = int.from_bytes(raw[offset + 2 : offset + 4], "little")
+                # Multiple records with the same ID cannot be represented safely.
+                if manufacturer_id in records:
+                    return {}
+                records[manufacturer_id] = raw[offset + 4 : end]
+            offset = end
+        return records
 
     def _apply_advertisement(self, reading: BMxReading) -> None:
         """Publish an advertisement reading, filtering what shouldn't be used."""
