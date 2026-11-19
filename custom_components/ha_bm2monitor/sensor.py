@@ -38,8 +38,8 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         suggested_display_precision=2,
-        name="Voltage",
         icon="mdi:current-dc",
+        name="Voltage",
     ),
     BMxSensor.BATTERY_STATUS: SensorEntityDescription(
         key=BMxSensor.BATTERY_STATUS,
@@ -62,13 +62,12 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         entity_registry_enabled_default=False,
         name="Signal strength",
     ),
-    # ADVERTISEMENT FALLBACK:
-    # This is an inferred protocol era, not an exact firmware revision.
     BMxSensor.BM2_GENERATION: SensorEntityDescription(
         key=BMxSensor.BM2_GENERATION,
-        name="BM2 generation",
         icon="mdi:timeline-clock-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        name="BM2 generation",
     ),
 }
 
